@@ -5,4 +5,6 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_executable(Ignis main.cpp
         frontend/lexer/lexer.h
-        frontend/token/token.h)
+        frontend/token/token.h
+        frontend/lexer/lexer.cpp
+        utils/utils.h)
