@@ -9,11 +9,13 @@ enum NodeType {
     TFun,
     TLet,
     TRet,
+    TParam,
 };
 
 #include <string>
 struct Node {
     NodeType nodeType;
     std::string_view funcName;
+    std::vector<Node*> children;
 };
 #endif //IGNIS_NODE_H

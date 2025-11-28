@@ -20,6 +20,7 @@ enum TokenType {
     ConstInt,
     Operator,
     Assign,
+    EOF_TOKEN
 };
 
 struct Token {

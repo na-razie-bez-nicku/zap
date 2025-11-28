@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "frontend/lexer/lexer.h"
+#include "frontend/parser/parser.h"
 #define VERSION "pre alpha 0.1"
 
 void help() {
@@ -28,6 +29,8 @@ int main(int argc, char* argv[]) {
     for (auto& tok : toks) {
         std::cout<<"type= "<<tok.type<<" value= "<<tok.value<<std::endl;
     }
+    Parser parser;
+    parser.Parse(&toks);
     // if (argc < 2) {
     //     help();
     // }else {

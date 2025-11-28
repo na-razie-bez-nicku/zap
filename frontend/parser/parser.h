@@ -11,7 +11,16 @@
 class Parser {
     public:
     std::vector<Token> tokens;
-    std::vector<Node> Parse(std::vector<Token> tokens);
+    unsigned long pos;
+    std::vector<Node> Parse(std::vector<Token> *tokens);
+    Token Peek();
+    Token Advance();
+    Token Previous();
+    bool IsAtEnd();
+    Token Consume(TokenType expectedType, std::string errMsg);
+    Node ParseStatement();
+    Node ParseFunction();
+    Node ParseParams();
 };
 
 #endif //IGNIS_PARSER_H
