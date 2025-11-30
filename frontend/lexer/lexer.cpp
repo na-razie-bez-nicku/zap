@@ -131,6 +131,30 @@ std::vector<Token> Lexer::Tokenize(std::string_view content)
             continue;
         }
 
+        if (Peek() == '"')
+        {
+            size_t start = pos;
+            Advance(); // consume opening quote
+            while (Peek() != '"' && Peek() != '\0')
+            {
+                Advance();
+            }
+            if (Peek() == '"')
+            {
+                size_t length = pos - start - 1; // exclude quotes
+                std::string_view strVal(current_file.data() + start + 1, length);
+                tokens.emplace_back(TokenType::ConstString, start, strVal);
+                Advance(); // consume closing quote
+            }
+            else
+            {
+                // Unterminated string literal
+                std::cerr << "Unterminated string literal at pos " << start << "\n";
+                exit(1);
+            }
+            continue;
+        }
+
         if (pos >= current_file.size())
         {
             std::cout << "BREAK\n";

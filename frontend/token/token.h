@@ -21,6 +21,7 @@ enum TokenType
     Colon,
     Comma,
     ConstInt,
+    ConstString,
     Operator,
     Assign,
     EOF_TOKEN
