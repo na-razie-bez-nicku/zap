@@ -1,12 +1,13 @@
 #include "lexer/lexer.hpp"
 #include "parser/parser.hpp"
 #include "compiler/codegen.hpp"
+#include "sema/sema.hpp"
 #include <fstream>
 #include <iostream>
 #define LEXER_DEBUG false
 #define PARSER_DEBUG false
 #define COMPILER_DEBUG false
-
+using namespace zap;
 int main(int argc, char *argv[])
 {
   // zapc <file1>
@@ -33,7 +34,8 @@ int main(int argc, char *argv[])
     printf("%s \n", fileContent.c_str());
     Lexer lex;
     auto toks = lex.tokenize(fileContent);
-    Parser parser;
+    auto symTable = std::make_shared<sema::SymbolTable>();
+    Parser parser(symTable);
     if (LEXER_DEBUG)
     {
       for (const auto &token : toks)
@@ -44,7 +46,7 @@ int main(int argc, char *argv[])
     }
     auto root = parser.parse(toks);
 
-    zap::Compiler compiler;
+    zap::Compiler compiler(symTable);
     compiler.compile(root);
 
     // Extract output filename from input without extension

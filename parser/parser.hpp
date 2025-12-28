@@ -3,11 +3,13 @@
 #include "../token/token.hpp"
 #include <vector>
 
-class Parser {
+class Parser
+{
 public:
   unsigned long long int pos_;
   std::vector<Token> toks_;
-  Parser() {}
+  std::shared_ptr<zap::sema::SymbolTable> symTable_;
+  Parser(std::shared_ptr<zap::sema::SymbolTable> symTable) : symTable_(symTable) {}
   std::unique_ptr<RootNode> parse(std::vector<Token> toks);
   Token consume(TokenType expected, std::string err_msg = "");
   void advance();

@@ -2,6 +2,8 @@
 #include "../ast/const/const_id.hpp"
 #include "../ast/fun_call.hpp"
 #include "parser.hpp"
+#include "../sema/sema.hpp"
+#include <memory>
 #include <vector>
 
 std::unique_ptr<RootNode> Parser::parse(std::vector<Token> toks)
@@ -23,6 +25,11 @@ std::unique_ptr<RootNode> Parser::parse(std::vector<Token> toks)
                    current.pos);
             exit(-1); // Handle unexpected tokens
         }
+    }
+    if (symTable_->found_main == false)
+    {
+        printf("Error: main function not found.\n");
+        exit(-1);
     }
     return root;
 }
@@ -77,6 +84,19 @@ std::unique_ptr<FunDecl> Parser::parseFun()
         return func;
     }
     func->body_ = parseBody();
+    if (symTable_->getFunction(func->name_))
+    {
+        printf("Function %s already declared.\n", func->name_.c_str());
+        exit(-1);
+    }
+    symTable_->addFunction(zap::sema::FunctionSymbol{
+        func->name_, std::move(func->genericParams_), std::move(func->params_),
+        std::move(func->returnType_), func->isExtern_, func->isStatic_,
+        func->isPublic_});
+    if (func->name_ == "main")
+    {
+        symTable_->found_main = true;
+    }
     return func;
 }
 

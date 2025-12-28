@@ -1,5 +1,6 @@
 #pragma once
 #include "ast/nodes.hpp"
+#include "../sema/sema.hpp"
 #include <memory>
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -13,9 +14,11 @@ namespace zap
     {
 
     public:
+        Compiler(std::shared_ptr<sema::SymbolTable> symTable) : symTable_(symTable) {}
         llvm::LLVMContext context_;
         llvm::Module module_{"zap_module", context_};
         llvm::IRBuilder<> builder_{context_};
+        std::shared_ptr<sema::SymbolTable> symTable_;
         void compile(const std::unique_ptr<RootNode> &root);
         void generateFunction(const FunDecl &funDecl);
         void generateBody(const BodyNode &body);
@@ -25,5 +28,4 @@ namespace zap
         void emitIRToFile(const std::string &filename);
         void compileIR(const std::string &irFilename, const std::string &outputFilename);
     };
-
-}
+} // namespace zap

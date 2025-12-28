@@ -24,7 +24,9 @@ namespace zap::sema
         std::unordered_map<std::string, FunctionSymbol> functions_;
 
     public:
+        bool found_main = false;
         void addFunction(const FunctionSymbol &func);
+        std::shared_ptr<FunctionSymbol> getFunction(const std::string &name);
         void analyze();
     };
 } // namespace sema

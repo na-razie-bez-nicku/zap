@@ -26,7 +26,6 @@ void zap::Compiler::generateFunction(const FunDecl &funDecl)
     std::vector<llvm::Type *> paramTypes;
     for (const auto &param : funDecl.params_)
     {
-        // For simplicity, assume all parameters are of type i32
         paramTypes.push_back(mapType(*param->type));
     }
 
