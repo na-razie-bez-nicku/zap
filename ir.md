@@ -132,7 +132,7 @@ entry:
 ```
 func User_show(self: User) -> void:
 entry:
-  %tmp:ptr 18 = getfield %self name
+  %tmp:ptr i8 = getfield %self name
   call std_io_log "name :", %tmp
   return
 ```
