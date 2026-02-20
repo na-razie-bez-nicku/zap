@@ -16,7 +16,7 @@ enum TokenType
   MODULE = 11,
   PUB = 12,
   PRIV = 13,
-  STRUCT = 14,
+  RECORD = 14,
   IMPL = 15,
   STATIC = 16,
   ENUM = 17,

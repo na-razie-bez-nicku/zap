@@ -13,6 +13,8 @@
 #include "../ast/const/const_id.hpp"
 #include "../ast/parameter_node.hpp"
 #include "../ast/type_node.hpp"
+#include "../ast/enum_decl.hpp"
+#include "../ast/record_decl.hpp"
 
 // AstBuilder: lightweight factory used by the parser to construct AST nodes.
 // Keeps construction details centralized and makes parser code modular.
@@ -70,6 +72,16 @@ public:
   std::unique_ptr<TypeNode> makeType(const std::string &name)
   {
     return std::make_unique<TypeNode>(name);
+  }
+
+  std::unique_ptr<EnumDecl> makeEnumDecl(const std::string &name, std::vector<std::string> entries)
+  {
+    return std::make_unique<EnumDecl>(name, std::move(entries));
+  }
+
+  std::unique_ptr<RecordDecl> makeRecordDecl(const std::string &name, std::vector<std::unique_ptr<ParameterNode>> fields)
+  {
+    return std::make_unique<RecordDecl>(name, std::move(fields));
   }
 
   // Utility: set span on a node

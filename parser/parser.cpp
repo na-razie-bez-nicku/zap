@@ -14,6 +14,10 @@ std::unique_ptr<RootNode> Parser::parse() {
     while (!isAtEnd()) {
         if (peek().type == TokenType::FUN) {
             root->addChild(parseFunDecl());
+        } else if (peek().type == TokenType::ENUM) {
+            root->addChild(parseEnumDecl());
+        } else if (peek().type == TokenType::RECORD) {
+            root->addChild(parseRecordDecl());
         } else {
             std::cerr << "Parser Error: Unexpected token " << peek().value << " at " << peek().pos << std::endl;
             exit(EXIT_FAILURE);
@@ -30,7 +34,6 @@ std::unique_ptr<RootNode> Parser::parse() {
 
         eat(TokenType::LPAREN);
 
-        // Parse parameters
         if (peek().type != TokenType::RPAREN) {
             do {
                 funDecl->params_.push_back(parseParameter());
@@ -39,15 +42,11 @@ std::unique_ptr<RootNode> Parser::parse() {
 
         eat(TokenType::RPAREN);
 
-        // Check for an explicit return type.
         if (peek().type != TokenType::LBRACE) {
-            // Assume the next token is an ID representing the return type.
             Token returnTypeToken = eat(TokenType::ID);
             funDecl->returnType_ = _builder.makeType(returnTypeToken.value);
             _builder.setSpan(funDecl->returnType_.get(), returnTypeToken.pos, returnTypeToken.pos + returnTypeToken.value.length());
         } else {
-            // No explicit return type, default to "void".
-            // We can create a "void" TypeNode. The span can be set to the position of the LBRACE.
             funDecl->returnType_ = _builder.makeType("void");
             const auto& nextToken = peek();
             _builder.setSpan(funDecl->returnType_.get(), nextToken.pos, nextToken.pos);
@@ -211,6 +210,47 @@ Token Parser::eat(TokenType expectedType) {
 
 bool Parser::isAtEnd() const {
     return _pos >= _tokens.size();
+}
+
+std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
+    Token enumKeyword = eat(TokenType::ENUM);
+    Token enumNameToken = eat(TokenType::ID);
+
+    std::vector<std::string> entries;
+    eat(TokenType::LBRACE);
+
+    if (peek().type != TokenType::RBRACE) {
+        do {
+            Token entryToken = eat(TokenType::ID);
+            entries.push_back(entryToken.value);
+        } while (peek().type == TokenType::COMMA && eat(TokenType::COMMA).type == TokenType::COMMA);
+    }
+
+    Token rbraceToken = eat(TokenType::RBRACE);
+
+    auto enumDecl = _builder.makeEnumDecl(enumNameToken.value, std::move(entries));
+    _builder.setSpan(enumDecl.get(), enumKeyword.pos, rbraceToken.pos + rbraceToken.value.length());
+    return enumDecl;
+}
+
+std::unique_ptr<RecordDecl> Parser::parseRecordDecl() {
+    Token recordKeyword = eat(TokenType::RECORD);
+    Token recordNameToken = eat(TokenType::ID);
+
+    std::vector<std::unique_ptr<ParameterNode>> fields;
+    eat(TokenType::LBRACE);
+
+            while (peek().type != TokenType::RBRACE) {
+                fields.push_back(parseParameter());
+                if (peek().type == TokenType::COMMA || peek().type == TokenType::SEMICOLON) {            eat(peek().type);
+        }
+    }
+
+    Token rbraceToken = eat(TokenType::RBRACE);
+
+    auto recordDecl = _builder.makeRecordDecl(recordNameToken.value, std::move(fields));
+    _builder.setSpan(recordDecl.get(), recordKeyword.pos, rbraceToken.pos + rbraceToken.value.length());
+    return recordDecl;
 }
 
 } // namespace zap

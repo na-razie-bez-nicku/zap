@@ -120,18 +120,16 @@ std::vector<Token> Lexer::tokenize(const std::string &input)
     }
     else if (_cur == '/')
     {
-      if (Peek2() == '/') // Check for single-line comment
+      if (Peek2() == '/')
       {
-        // It's a comment, ignore until the end of the line
         while (!isAtEnd() && _input[_pos] != '\n')
         {
           ++_pos;
         }
-        continue; // Skip emitting a token
+        continue;
       }
       else
       {
-        // It's a division operator
         tokens.emplace_back(startPos, TokenType::DIVIDE, "/");
         ++_pos;
         continue;
@@ -309,8 +307,8 @@ std::vector<Token> Lexer::tokenize(const std::string &input)
         tokens.emplace_back(idStart, TokenType::PUB, identStr);
       else if (identStr == "priv")
         tokens.emplace_back(idStart, TokenType::PRIV, identStr);
-      else if (identStr == "struct")
-        tokens.emplace_back(idStart, TokenType::STRUCT, identStr);
+      else if (identStr == "record")
+        tokens.emplace_back(idStart, TokenType::RECORD, identStr);
       else if (identStr == "impl")
         tokens.emplace_back(idStart, TokenType::IMPL, identStr);
       else if (identStr == "static")
