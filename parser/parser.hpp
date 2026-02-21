@@ -3,12 +3,15 @@
 #include "../ast/body_node.hpp"
 #include "../ast/const/const_int.hpp"
 #include "../ast/enum_decl.hpp"
+#include "../ast/assign_node.hpp"
 #include "../ast/expr_node.hpp"
 #include "../ast/fun_decl.hpp"
+#include "../ast/if_node.hpp"
 #include "../ast/record_decl.hpp"
 #include "../ast/return_node.hpp"
 #include "../ast/root_node.hpp"
 #include "../ast/var_decl.hpp"
+#include "../ast/while_node.hpp"
 #include "../token/token.hpp"
 #include "ast_builder.hpp"
 #include <memory>
@@ -36,7 +39,9 @@ private:
   std::unique_ptr<FunDecl> parseFunDecl();
   std::unique_ptr<BodyNode> parseBody();
   std::unique_ptr<VarDecl> parseVarDecl();
+  std::unique_ptr<AssignNode> parseAssign();
   std::unique_ptr<IfNode> parseIf();
+  std::unique_ptr<WhileNode> parseWhile();
   std::unique_ptr<ReturnNode> parseReturnStmt();
   std::unique_ptr<ExpressionNode> parseExpression();
   std::unique_ptr<ExpressionNode> parseBinaryExpression(int minPrecedence);

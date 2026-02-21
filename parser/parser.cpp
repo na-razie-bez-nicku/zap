@@ -88,6 +88,15 @@ std::unique_ptr<BodyNode> Parser::parseBody() {
         // Used as a statement without semicolon
         body->addStatement(std::move(ifNode));
       }
+    } else if (peek().type == TokenType::WHILE) {
+      auto whileNode = parseWhile();
+      if (peek().type == TokenType::SEMICOLON) {
+        eat(TokenType::SEMICOLON);
+      }
+      body->addStatement(std::move(whileNode));
+    } else if (peek().type == TokenType::ID &&
+               peek(1).type == TokenType::ASSIGN) {
+      body->addStatement(parseAssign());
     } else {
       auto expr = parseExpression();
       if (peek().type == TokenType::SEMICOLON) {
@@ -139,6 +148,18 @@ std::unique_ptr<VarDecl> Parser::parseVarDecl() {
   return varDecl;
 }
 
+std::unique_ptr<AssignNode> Parser::parseAssign() {
+  Token target = eat(TokenType::ID);
+  eat(TokenType::ASSIGN);
+  auto expr = parseExpression();
+  Token semicolonToken = eat(TokenType::SEMICOLON);
+
+  auto node = _builder.makeAssign(target.value, std::move(expr));
+  _builder.setSpan(node.get(), target.pos,
+                   semicolonToken.pos + semicolonToken.value.length());
+  return node;
+}
+
 std::unique_ptr<IfNode> Parser::parseIf() {
   Token ifKeyword = eat(TokenType::IF);
 
@@ -183,6 +204,31 @@ std::unique_ptr<IfNode> Parser::parseIf() {
                                     : ifNode->thenBody_->span.end;
   _builder.setSpan(ifNode.get(), ifKeyword.pos, endPos);
   return ifNode;
+}
+
+std::unique_ptr<WhileNode> Parser::parseWhile() {
+  Token whileKeyword = eat(TokenType::WHILE);
+
+  bool hasParen = false;
+  if (peek().type == TokenType::LPAREN) {
+    eat(TokenType::LPAREN);
+    hasParen = true;
+  }
+
+  auto condition = parseExpression();
+
+  if (hasParen) {
+    eat(TokenType::RPAREN);
+  }
+
+  eat(TokenType::LBRACE);
+  auto body = parseBody();
+  Token rbraceToken = eat(TokenType::RBRACE);
+
+  auto whileNode = _builder.makeWhile(std::move(condition), std::move(body));
+  _builder.setSpan(whileNode.get(), whileKeyword.pos,
+                   rbraceToken.pos + rbraceToken.value.length());
+  return whileNode;
 }
 
 std::unique_ptr<ReturnNode> Parser::parseReturnStmt() {

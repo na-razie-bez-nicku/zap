@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "../ast/assign_node.hpp"
 #include "../ast/bin_expr.hpp"
 #include "../ast/body_node.hpp"
 #include "../ast/const/const_float.hpp"
@@ -19,10 +20,16 @@
 #include "../ast/root_node.hpp"
 #include "../ast/type_node.hpp"
 #include "../ast/var_decl.hpp"
+#include "../ast/while_node.hpp"
 
 class AstBuilder {
 public:
   std::unique_ptr<RootNode> makeRoot() { return std::make_unique<RootNode>(); }
+
+  std::unique_ptr<AssignNode> makeAssign(const std::string &target,
+                                         std::unique_ptr<ExpressionNode> expr) {
+    return std::make_unique<AssignNode>(target, std::move(expr));
+  }
 
   std::unique_ptr<FunDecl> makeFunDecl(const std::string &name) {
     auto f = std::make_unique<FunDecl>();
@@ -43,6 +50,11 @@ public:
                                  std::unique_ptr<BodyNode> elseBody) {
     return std::make_unique<IfNode>(std::move(condition), std::move(thenBody),
                                     std::move(elseBody));
+  }
+
+  std::unique_ptr<WhileNode> makeWhile(std::unique_ptr<ExpressionNode> condition,
+                                       std::unique_ptr<BodyNode> body) {
+    return std::make_unique<WhileNode>(std::move(condition), std::move(body));
   }
 
   std::unique_ptr<VarDecl> makeVarDecl(const std::string &name,
