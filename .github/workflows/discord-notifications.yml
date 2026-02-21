@@ -1,0 +1,24 @@
+name: Discord Notifications
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  discord:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discord notification
+        uses: sarisia/actions-status-discord@v1
+        if: always()
+        with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          status: ${{ job.status }}
+          content: "New activity in Zap repository!"
+          title: "${{ github.event_name == 'push' && 'New Commit' || 'Pull Request' }}"
+          description: "${{ github.event.head_commit.message || github.event.pull_request.title }}\n\nAuthor: ${{ github.actor }}"
+          color: 0x5865F2
+          url: "${{ github.event.repository.html_url }}"
