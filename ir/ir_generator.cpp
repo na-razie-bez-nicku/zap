@@ -10,6 +10,12 @@ std::unique_ptr<Module> BoundIRGenerator::generate(sema::BoundRootNode &root) {
 }
 
 void BoundIRGenerator::visit(sema::BoundRootNode &node) {
+  for (const auto &record : node.records) {
+    record->accept(*this);
+  }
+  for (const auto &en : node.enums) {
+    en->accept(*this);
+  }
   for (const auto &func : node.functions) {
     func->accept(*this);
   }
@@ -180,6 +186,14 @@ void BoundIRGenerator::visit(sema::BoundUnaryExpression &node) {
 void BoundIRGenerator::visit(sema::BoundArrayLiteral &node) {
   // Placeholder: array literal generation is complex
   valueStack_.push(std::make_shared<Constant>("0", node.type));
+}
+
+void BoundIRGenerator::visit(sema::BoundRecordDeclaration &node) {
+  module_->addType(node.type);
+}
+
+void BoundIRGenerator::visit(sema::BoundEnumDeclaration &node) {
+  module_->addType(node.type);
 }
 
 } // namespace zir

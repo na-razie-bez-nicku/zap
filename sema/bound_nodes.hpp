@@ -20,6 +20,8 @@ class BoundBinaryExpression;
 class BoundUnaryExpression;
 class BoundFunctionCall;
 class BoundArrayLiteral;
+class BoundRecordDeclaration;
+class BoundEnumDeclaration;
 
 class BoundVisitor {
 public:
@@ -36,6 +38,8 @@ public:
   virtual void visit(BoundUnaryExpression &node) = 0;
   virtual void visit(BoundFunctionCall &node) = 0;
   virtual void visit(BoundArrayLiteral &node) = 0;
+  virtual void visit(BoundRecordDeclaration &node) = 0;
+  virtual void visit(BoundEnumDeclaration &node) = 0;
 };
 
 class BoundNode {
@@ -161,8 +165,22 @@ public:
   void accept(BoundVisitor &v) override { v.visit(*this); }
 };
 
+class BoundRecordDeclaration : public BoundNode {
+public:
+  std::shared_ptr<zir::RecordType> type;
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+};
+
+class BoundEnumDeclaration : public BoundNode {
+public:
+  std::shared_ptr<zir::EnumType> type;
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+};
+
 class BoundRootNode : public BoundNode {
 public:
+  std::vector<std::unique_ptr<BoundRecordDeclaration>> records;
+  std::vector<std::unique_ptr<BoundEnumDeclaration>> enums;
   std::vector<std::unique_ptr<BoundFunctionDeclaration>> functions;
   void accept(BoundVisitor &v) override { v.visit(*this); }
 };

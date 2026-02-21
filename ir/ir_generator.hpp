@@ -25,6 +25,8 @@ public:
   void visit(sema::BoundUnaryExpression &node) override;
   void visit(sema::BoundFunctionCall &node) override;
   void visit(sema::BoundArrayLiteral &node) override;
+  void visit(sema::BoundRecordDeclaration &node) override;
+  void visit(sema::BoundEnumDeclaration &node) override;
 
 private:
   std::unique_ptr<Module> module_;

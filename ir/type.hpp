@@ -5,7 +5,7 @@
 
 namespace zir {
 
-enum class TypeKind { Void, Int, Float, Bool, Pointer, Record, Array };
+enum class TypeKind { Void, Int, Float, Bool, Pointer, Record, Array, Enum };
 
 class Type {
 public:
@@ -49,13 +49,41 @@ public:
 };
 
 class RecordType : public Type {
+  struct Field {
+    std::string name;
+    std::shared_ptr<Type> type;
+  };
+
   std::string name;
+  std::vector<Field> fields;
 
 public:
   RecordType(std::string n) : name(std::move(n)) {}
   TypeKind getKind() const override { return TypeKind::Record; }
   std::string toString() const override { return "%" + name; }
   bool isReferenceType() const override { return true; }
+
+  void addField(std::string n, std::shared_ptr<Type> t) {
+    fields.push_back({std::move(n), std::move(t)});
+  }
+
+  const std::vector<Field> &getFields() const { return fields; }
+  const std::string &getName() const { return name; }
+};
+
+class EnumType : public Type {
+  std::string name;
+  std::vector<std::string> variants;
+
+public:
+  EnumType(std::string n, std::vector<std::string> v)
+      : name(std::move(n)), variants(std::move(v)) {}
+  TypeKind getKind() const override { return TypeKind::Enum; }
+  std::string toString() const override { return "enum " + name; }
+  bool isReferenceType() const override { return false; }
+
+  const std::vector<std::string> &getVariants() const { return variants; }
+  const std::string &getName() const { return name; }
 };
 
 class ArrayType : public Type {

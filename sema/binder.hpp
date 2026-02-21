@@ -31,6 +31,8 @@ public:
   void visit(ConstString &node) override;
   void visit(UnaryExpr &node) override;
   void visit(ArrayLiteralNode &node) override;
+  void visit(EnumDecl &node) override;
+  void visit(RecordDecl &node) override;
 
 private:
   zap::DiagnosticEngine &_diag;

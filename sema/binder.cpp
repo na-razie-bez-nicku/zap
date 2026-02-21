@@ -1,4 +1,6 @@
 #include "binder.hpp"
+#include "../ast/enum_decl.hpp"
+#include "../ast/record_decl.hpp"
 #include <iostream>
 
 namespace sema {
@@ -8,8 +10,49 @@ Binder::Binder(zap::DiagnosticEngine &diag) : _diag(diag), hadError_(false) {}
 std::unique_ptr<BoundRootNode> Binder::bind(RootNode &root) {
   boundRoot_ = std::make_unique<BoundRootNode>();
   currentScope_ = std::make_shared<SymbolTable>();
-  hadError_ = false;
+  // Register built-in types
+  currentScope_->declare("Int", std::make_shared<TypeSymbol>(
+                                    "Int", std::make_shared<zir::PrimitiveType>(
+                                               zir::TypeKind::Int)));
+  currentScope_->declare(
+      "Float",
+      std::make_shared<TypeSymbol>(
+          "Float", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Float)));
+  currentScope_->declare(
+      "Bool",
+      std::make_shared<TypeSymbol>(
+          "Bool", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool)));
+  currentScope_->declare(
+      "Void",
+      std::make_shared<TypeSymbol>(
+          "Void", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Void)));
+  currentScope_->declare(
+      "String", std::make_shared<TypeSymbol>(
+                    "String", std::make_shared<zir::RecordType>("String")));
 
+  // Pass 1: Declare all types
+  for (const auto &child : root.children) {
+    if (auto recordDecl = dynamic_cast<RecordDecl *>(child.get())) {
+      auto type = std::make_shared<zir::RecordType>(recordDecl->name_);
+      if (!currentScope_->declare(recordDecl->name_,
+                                  std::make_shared<TypeSymbol>(
+                                      recordDecl->name_, std::move(type)))) {
+        error(recordDecl->span,
+              "Type '" + recordDecl->name_ + "' already declared.");
+      }
+    } else if (auto enumDecl = dynamic_cast<EnumDecl *>(child.get())) {
+      auto type =
+          std::make_shared<zir::EnumType>(enumDecl->name_, enumDecl->entries_);
+      if (!currentScope_->declare(
+              enumDecl->name_,
+              std::make_shared<TypeSymbol>(enumDecl->name_, std::move(type)))) {
+        error(enumDecl->span,
+              "Type '" + enumDecl->name_ + "' already declared.");
+      }
+    }
+  }
+
+  // Pass 2: Declare all functions
   for (const auto &child : root.children) {
     if (auto funDecl = dynamic_cast<FunDecl *>(child.get())) {
       std::vector<std::shared_ptr<VariableSymbol>> params;
@@ -338,17 +381,24 @@ void Binder::popScope() {
 }
 
 std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode) {
+  auto symbol = currentScope_->lookup(typeNode.typeName);
   std::shared_ptr<zir::Type> type = nullptr;
-  if (typeNode.typeName == "Int")
-    type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int);
-  else if (typeNode.typeName == "Float")
-    type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Float);
-  else if (typeNode.typeName == "Bool")
-    type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
-  else if (typeNode.typeName == "String")
-    type = std::make_shared<zir::RecordType>("String");
-  else
-    type = std::make_shared<zir::RecordType>(typeNode.typeName);
+
+  if (symbol && symbol->getKind() == SymbolKind::Type) {
+    type = symbol->type;
+  } else {
+    // Fallback/Legacy
+    if (typeNode.typeName == "Int")
+      type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int);
+    else if (typeNode.typeName == "Float")
+      type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Float);
+    else if (typeNode.typeName == "Bool")
+      type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
+    else if (typeNode.typeName == "String")
+      type = std::make_shared<zir::RecordType>("String");
+    else
+      type = std::make_shared<zir::RecordType>(typeNode.typeName);
+  }
 
   if (typeNode.isArray) {
     size_t size = 0;
@@ -423,6 +473,28 @@ void Binder::visit(ArrayLiteralNode &node) {
       elements.size());
   expressionStack_.push(
       std::make_unique<BoundArrayLiteral>(std::move(elements), arrayType));
+}
+
+void Binder::visit(RecordDecl &node) {
+  auto symbol = currentScope_->lookup(node.name_);
+  auto recordType = std::static_pointer_cast<zir::RecordType>(symbol->type);
+
+  for (const auto &field : node.fields_) {
+    recordType->addField(field->name, mapType(*field->type));
+  }
+
+  auto boundRecord = std::make_unique<BoundRecordDeclaration>();
+  boundRecord->type = recordType;
+  boundRoot_->records.push_back(std::move(boundRecord));
+}
+
+void Binder::visit(EnumDecl &node) {
+  auto symbol = currentScope_->lookup(node.name_);
+  auto enumType = std::static_pointer_cast<zir::EnumType>(symbol->type);
+
+  auto boundEnum = std::make_unique<BoundEnumDeclaration>();
+  boundEnum->type = enumType;
+  boundRoot_->enums.push_back(std::move(boundEnum));
 }
 
 bool Binder::isNumeric(std::shared_ptr<zir::Type> type) {

@@ -213,4 +213,19 @@ public:
   }
 };
 
+class GetElementPtrInst : public Instruction {
+  std::shared_ptr<Value> result, ptr;
+  int index;
+
+public:
+  GetElementPtrInst(std::shared_ptr<Value> res, std::shared_ptr<Value> p,
+                    int idx)
+      : result(std::move(res)), ptr(std::move(p)), index(idx) {}
+  OpCode getOpCode() const override { return OpCode::GetElementPtr; }
+  std::string toString() const override {
+    return result->getName() + " = getelementptr " + ptr->getTypeName() + " " +
+           ptr->getName() + ", i32 " + std::to_string(index);
+  }
+};
+
 } // namespace zir
