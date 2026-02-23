@@ -38,7 +38,7 @@ namespace codegen
   bool LLVMCodeGen::emitObjectFile(const std::string &path)
   {
     auto targetTriple = llvm::sys::getDefaultTargetTriple();
-    module_->setTargetTriple(targetTriple);
+    module_->setTargetTriple(llvm::Triple(targetTriple));
 
     std::string error;
     const auto *target = llvm::TargetRegistry::lookupTarget(targetTriple, error);
