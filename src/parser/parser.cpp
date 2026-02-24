@@ -388,8 +388,10 @@ namespace zap
   std::unique_ptr<ReturnNode> Parser::parseReturnStmt()
   {
     Token returnKeyword = eat(TokenType::RETURN);
-
-    auto expr = parseExpression();
+    std::unique_ptr<ExpressionNode> expr = nullptr;
+    if (peek().type != TokenType::SEMICOLON) {
+      expr = parseExpression();
+    }
 
     Token semicolonToken = eat(TokenType::SEMICOLON);
 

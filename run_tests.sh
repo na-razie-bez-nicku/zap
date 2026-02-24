@@ -38,6 +38,7 @@ echo "--- Zap Compiler Test Suite ---"
 
 # Valid code (should pass)
 run_test "tests/valid.zap" 0 "Valid program"
+run_test "tests/return_void.zap" 0 "Return in void function"
 
 # Lexer errors (exit code 1)
 run_test "tests/lexer_error.zap" 1 "Lexer error: Unterminated string"

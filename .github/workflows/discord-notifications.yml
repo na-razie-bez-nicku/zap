@@ -20,7 +20,7 @@ jobs:
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
           title: "[${{ github.event.repository.name }}:${{ github.ref_name }}] 1 new commit"
           url: "${{ github.event.repository.html_url }}/commit/${{ github.sha }}"
-          description: "`${{ steps.vars.outputs.sha_short }}` ${{ github.event.head_commit.message }} - ${{ github.actor }}"
+          description: "`${{ steps.vars.outputs.sha_short }}` ${{ github.event.head_commit.message }}"
           color: 0x5865F2
           nodetail: true
           notimestamp: true
