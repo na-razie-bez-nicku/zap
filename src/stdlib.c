@@ -61,3 +61,22 @@ void println_cstr(const char *s)
     }
     puts(s);
 }
+
+zap_string_t getLn()
+{
+    char *line = NULL;
+    size_t len = 0;
+    size_t read = getline(&line, &len, stdin);
+    if (read == -1)
+    {
+        free(line);
+        return (zap_string_t){.ptr = NULL, .len = 0};
+    }
+    // Remove newline if present
+    if (read > 0 && line[read - 1] == '\n')
+    {
+        line[--read] = '\0';
+    }
+    zap_string_t result = {.ptr = line, .len = read};
+    return result;
+}
