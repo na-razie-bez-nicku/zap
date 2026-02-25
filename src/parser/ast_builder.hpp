@@ -12,6 +12,7 @@
 #include "../ast/const/const_id.hpp"
 #include "../ast/const/const_int.hpp"
 #include "../ast/const/const_string.hpp"
+#include "../ast/const/const_char.hpp"
 #include "../ast/enum_decl.hpp"
 #include "../ast/fun_call.hpp"
 #include "../ast/fun_decl.hpp"
@@ -112,6 +113,10 @@ public:
 
   std::unique_ptr<ConstString> makeConstString(const std::string &value) {
     return std::make_unique<ConstString>(value);
+  }
+
+  std::unique_ptr<ConstChar> makeConstChar(const std::string &value) {
+    return std::make_unique<ConstChar>(value);
   }
 
   std::unique_ptr<ParameterNode> makeParam(const std::string &name,

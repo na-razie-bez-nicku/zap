@@ -1,6 +1,7 @@
 #include "binder.hpp"
 #include "../ast/enum_decl.hpp"
 #include "../ast/record_decl.hpp"
+#include "../ast/const/const_char.hpp"
 #include <iostream>
 
 namespace sema
@@ -30,6 +31,10 @@ namespace sema
     currentScope_->declare(
         "String", std::make_shared<TypeSymbol>(
                       "String", std::make_shared<zir::RecordType>("String")));
+    currentScope_->declare(
+      "Char",
+      std::make_shared<TypeSymbol>(
+        "Char", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Char)));
 
     // Provide `println` as a built-in external function: println(s: String) -> Void
     {
@@ -372,6 +377,23 @@ namespace sema
       }
       type = getPromotedType(left->type, right->type);
     }
+    else if (node.op_ == "~")
+    {
+      auto isStringOrChar = [](std::shared_ptr<zir::Type> t) {
+        if (!t) return false;
+        if (t->getKind() == zir::TypeKind::Record)
+        {
+          return static_cast<zir::RecordType *>(t.get())->getName() == "String";
+        }
+        return t->getKind() == zir::TypeKind::Char;
+      };
+
+      if (!isStringOrChar(left->type) || !isStringOrChar(right->type))
+      {
+        error(node.span, "Operator '~' can only be applied to 'Char' and 'String' types");
+      }
+      type = std::make_shared<zir::RecordType>("String");
+    }
     else if (node.op_ == "==" || node.op_ == "!=" || node.op_ == "<" ||
              node.op_ == ">" || node.op_ == "<=" || node.op_ == ">=")
     {
@@ -407,6 +429,12 @@ namespace sema
   {
     expressionStack_.push(std::make_unique<BoundLiteral>(
         node.value_, std::make_shared<zir::RecordType>("String")));
+  }
+
+  void Binder::visit(ConstChar &node)
+  {
+    expressionStack_.push(std::make_unique<BoundLiteral>(
+        node.value_, std::make_shared<zir::PrimitiveType>(zir::TypeKind::Char)));
   }
 
   void Binder::visit(ConstId &node)

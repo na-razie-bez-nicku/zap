@@ -499,6 +499,13 @@ namespace zap
       _builder.setSpan(constStr.get(), current.span);
       return constStr;
     }
+    else if (current.type == TokenType::CHAR)
+    {
+      eat(TokenType::CHAR);
+      auto constChar = _builder.makeConstChar(current.value);
+      _builder.setSpan(constChar.get(), current.span);
+      return constChar;
+    }
     else if (current.type == TokenType::BOOL)
     {
       eat(TokenType::BOOL);
@@ -569,6 +576,8 @@ namespace zap
   {
     switch (type)
     {
+    case TokenType::CONCAT:
+      return 1;
     case TokenType::EQUAL:
     case TokenType::NOTEQUAL:
     case TokenType::LESS:

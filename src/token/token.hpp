@@ -163,8 +163,10 @@ inline std::string tokenTypeToString(TokenType type)
     case TokenType::INTEGER: return "integer literal";
     case TokenType::FLOAT: return "float literal";
     case TokenType::STRING: return "string literal";
+    case TokenType::CHAR: return "char literal";
     case TokenType::BOOL: return "boolean literal";
     case TokenType::VAL: return "val";
+    case TokenType::CONCAT: return "~";
     default: return "unknown token";
   }
 }

@@ -30,6 +30,7 @@ class AssignNode;
 class ConstInt;
 class ConstFloat;
 class ConstString;
+class ConstChar;
 class ConstBool;
 class ConstId;
 
@@ -69,6 +70,7 @@ struct Visitor
   virtual void visit(ConstInt &) {}
   virtual void visit(ConstFloat &) {}
   virtual void visit(ConstString &) {}
+  virtual void visit(ConstChar &) {}
   virtual void visit(ConstBool &) {}
   virtual void visit(ConstId &) {}
 };

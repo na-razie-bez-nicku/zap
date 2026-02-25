@@ -427,6 +427,63 @@ namespace codegen
     else if (node.op == ">=")
       lastValue_ = isFloat ? builder_.CreateFCmpOGE(lhs, rhs)
                            : builder_.CreateICmpSGE(lhs, rhs);
+    else if (node.op == "~")
+    {
+      auto *i8Ty = llvm::Type::getInt8Ty(ctx_);
+      auto *i64Ty = llvm::Type::getInt64Ty(ctx_);
+
+      llvm::Value *lhs_ptr = nullptr;
+      llvm::Value *lhs_len = nullptr;
+      llvm::Value *rhs_ptr = nullptr;
+      llvm::Value *rhs_len = nullptr;
+
+      if (node.left->type->getKind() == zir::TypeKind::Record)
+      {
+        lhs_ptr = builder_.CreateExtractValue(lhs, {0});
+        lhs_len = builder_.CreateExtractValue(lhs, {1});
+      }
+      else if (node.left->type->getKind() == zir::TypeKind::Char)
+      {
+        auto *buf = createEntryAlloca(currentFn_, "char_buf_l", i8Ty);
+        builder_.CreateStore(lhs, buf);
+        lhs_ptr = buf;
+        lhs_len = llvm::ConstantInt::get(i64Ty, 1);
+      }
+
+      if (node.right->type->getKind() == zir::TypeKind::Record)
+      {
+        rhs_ptr = builder_.CreateExtractValue(rhs, {0});
+        rhs_len = builder_.CreateExtractValue(rhs, {1});
+      }
+      else if (node.right->type->getKind() == zir::TypeKind::Char)
+      {
+        auto *buf = createEntryAlloca(currentFn_, "char_buf_r", i8Ty);
+        builder_.CreateStore(rhs, buf);
+        rhs_ptr = buf;
+        rhs_len = llvm::ConstantInt::get(i64Ty, 1);
+      }
+
+      if (functionMap_.count("string_concat_ptrlen") == 0)
+      {
+        std::vector<llvm::Type *> params = {
+            llvm::PointerType::getUnqual(i8Ty), i64Ty,
+            llvm::PointerType::getUnqual(i8Ty), i64Ty};
+        auto *ft = llvm::FunctionType::get(llvm::PointerType::getUnqual(i8Ty), params, false);
+        auto *fn = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, "string_concat_ptrlen", *module_);
+        functionMap_["string_concat_ptrlen"] = fn;
+      }
+
+      auto *concatFn = functionMap_.at("string_concat_ptrlen");
+      auto *call = builder_.CreateCall(concatFn, {lhs_ptr, lhs_len, rhs_ptr, rhs_len});
+
+      auto *sumLen = builder_.CreateAdd(lhs_len, rhs_len);
+
+      auto *structTy = static_cast<llvm::StructType *>(toLLVMType(*node.type));
+      llvm::Value *res = llvm::UndefValue::get(structTy);
+      res = builder_.CreateInsertValue(res, call, {0});
+      res = builder_.CreateInsertValue(res, sumLen, {1});
+      lastValue_ = res;
+    }
   }
 
   void LLVMCodeGen::visit(sema::BoundUnaryExpression &node)

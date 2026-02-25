@@ -391,6 +391,48 @@ std::vector<Token> Lexer::tokenize(const std::string &input) {
             zap::DiagnosticLevel::Error, "Unterminated string literal");
         exit(EXIT_FAILURE);
       }
+    } else if (_cur == '\'') {
+      // char literal
+      std::string charVal;
+      size_t charStart = _pos;
+      ++_pos;
+      _column++;
+      if (isAtEnd()) {
+        _diag.report(SourceSpan(startLine, startColumn, charStart, 1), zap::DiagnosticLevel::Error,
+                     "Unterminated char literal");
+        exit(EXIT_FAILURE);
+      }
+      if (_input[_pos] == '\\') {
+        ++_pos;
+        if (isAtEnd()) {
+          _diag.report(SourceSpan(startLine, startColumn, charStart, 1), zap::DiagnosticLevel::Error,
+                       "Unterminated char literal");
+          exit(EXIT_FAILURE);
+        }
+        switch (_input[_pos]) {
+        case 'n': charVal += '\n'; break;
+        case 't': charVal += '\t'; break;
+        case 'r': charVal += '\r'; break;
+        case '\\': charVal += '\\'; break;
+        case '\'': charVal += '\''; break;
+        case '0': charVal += '\0'; break;
+        default: charVal += _input[_pos]; break;
+        }
+      } else {
+        charVal += _input[_pos];
+      }
+      ++_pos;
+      _column++;
+      if (isAtEnd() || _input[_pos] != '\'') {
+        _diag.report(SourceSpan(startLine, startColumn, charStart, 1), zap::DiagnosticLevel::Error,
+                     "Unterminated char literal");
+        exit(EXIT_FAILURE);
+      }
+      ++_pos;
+      _column++;
+      tokens.emplace_back(TokenType::CHAR, charVal, startLine, startColumn,
+                          startPos, 3);
+      continue;
     } else {
       _diag.report(SourceSpan(startLine, startColumn, _pos, 1),
                    zap::DiagnosticLevel::Error,

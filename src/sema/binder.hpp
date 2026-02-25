@@ -34,6 +34,7 @@ namespace sema
     void visit(ConstId &node) override;
     void visit(ConstFloat &node) override;
     void visit(ConstString &node) override;
+    void visit(ConstChar &node) override;
     void visit(UnaryExpr &node) override;
     void visit(ArrayLiteralNode &node) override;
     void visit(EnumDecl &node) override;

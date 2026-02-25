@@ -118,6 +118,10 @@ run_test "tests/sema_error.zap" 1 "Semantic error: Undefined variable"
 # Multiple errors (exit code 1)
 run_test "tests/syntax_error.zap" 1 "Multiple syntax errors"
 
+# Concat tests
+run_runtime_test "tests/concat.zap" 0 "Concat literal strings"
+run_runtime_test "tests/concat_char.zap" 0 "Concat char + string"
+
 echo "-------------------------------"
 echo "Results: $PASSED / $TOTAL passed"
 
