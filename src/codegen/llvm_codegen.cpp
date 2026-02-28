@@ -610,10 +610,11 @@ namespace codegen
     evaluateAsAddr_ = true;
     node.left->accept(*this);
     llvm::Value *leftAddr = lastValue_;
-    evaluateAsAddr_ = old;
 
+    evaluateAsAddr_ = false;
     node.index->accept(*this);
     llvm::Value *indexVal = lastValue_;
+    evaluateAsAddr_ = old;
 
     auto *leftTy = toLLVMType(*node.left->type);
     llvm::Value *elemAddr = nullptr;
