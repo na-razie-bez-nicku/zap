@@ -524,25 +524,33 @@ namespace sema
 
   void Binder::visit(AssignNode &node)
   {
-    auto symbol = currentScope_->lookup(node.target_);
-    if (!symbol)
+    node.target_->accept(*this);
+    if (expressionStack_.empty())
+      return;
+    auto target = std::move(expressionStack_.top());
+    expressionStack_.pop();
+
+    // Check if target is an l-value (Variable or IndexAccess)
+    bool isLValue = false;
+    if (dynamic_cast<BoundVariableExpression *>(target.get()))
+      isLValue = true;
+    else if (dynamic_cast<BoundIndexAccess *>(target.get()))
+      isLValue = true;
+
+    if (!isLValue)
     {
-      error(node.span, "Undefined identifier: " + node.target_);
+      error(node.span, "Target of assignment must be an l-value.");
       return;
     }
 
-    auto varSymbol = std::dynamic_pointer_cast<VariableSymbol>(symbol);
-    if (!varSymbol)
+    // Check if target is constant
+    if (auto varExpr = dynamic_cast<BoundVariableExpression *>(target.get()))
     {
-      error(node.span,
-            "Cannot assign to '" + node.target_ + "' (not a variable).");
-      return;
-    }
-
-    if (varSymbol->is_const)
-    {
-      error(node.span, "Cannot assign to constant '" + node.target_ + "'.");
-      return;
+      if (varExpr->symbol->is_const)
+      {
+        error(node.span, "Cannot assign to constant '" + varExpr->symbol->name + "'.");
+        return;
+      }
     }
 
     node.expr_->accept(*this);
@@ -551,15 +559,44 @@ namespace sema
     auto expr = std::move(expressionStack_.top());
     expressionStack_.pop();
 
-    if (!canConvert(expr->type, varSymbol->type))
+    if (!canConvert(expr->type, target->type))
     {
       error(node.span, "Cannot assign expression of type '" +
-                           expr->type->toString() + "' to variable of type '" +
-                           varSymbol->type->toString() + "'");
+                           expr->type->toString() + "' to type '" +
+                           target->type->toString() + "'");
     }
 
     statementStack_.push(
-        std::make_unique<BoundAssignment>(varSymbol, std::move(expr)));
+        std::make_unique<BoundAssignment>(std::move(target), std::move(expr)));
+  }
+
+  void Binder::visit(IndexAccessNode &node)
+  {
+    node.left_->accept(*this);
+    if (expressionStack_.empty())
+      return;
+    auto left = std::move(expressionStack_.top());
+    expressionStack_.pop();
+
+    if (left->type->getKind() != zir::TypeKind::Array)
+    {
+      error(node.span, "Type '" + left->type->toString() + "' does not support indexing.");
+      return;
+    }
+
+    node.index_->accept(*this);
+    if (expressionStack_.empty())
+      return;
+    auto index = std::move(expressionStack_.top());
+    expressionStack_.pop();
+
+    if (index->type->getKind() != zir::TypeKind::Int)
+    {
+      error(node.span, "Array index must be an integer, but got '" + index->type->toString() + "'");
+    }
+
+    auto arrayType = std::static_pointer_cast<zir::ArrayType>(left->type);
+    expressionStack_.push(std::make_unique<BoundIndexAccess>(std::move(left), std::move(index), arrayType->getBaseType()));
   }
 
   void Binder::visit(MemberAccessNode &node)
@@ -790,6 +827,27 @@ namespace sema
 
   std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode)
   {
+    if (typeNode.isArray)
+    {
+      if (!typeNode.baseType)
+        return nullptr;
+      auto base = mapType(*typeNode.baseType);
+      size_t size = 0;
+      if (auto constInt = dynamic_cast<ConstInt *>(typeNode.arraySize.get()))
+      {
+        size = constInt->value_;
+      }
+      return std::make_shared<zir::ArrayType>(std::move(base), size);
+    }
+
+    if (typeNode.isPointer)
+    {
+      if (!typeNode.baseType)
+        return nullptr;
+      auto base = mapType(*typeNode.baseType);
+      return std::make_shared<zir::PointerType>(std::move(base));
+    }
+
     auto symbol = currentScope_->lookup(typeNode.typeName);
     std::shared_ptr<zir::Type> type = nullptr;
 
@@ -807,23 +865,12 @@ namespace sema
         type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
       else if (typeNode.typeName == "String")
         type = std::make_shared<zir::RecordType>("String");
+      else if (typeNode.typeName == "Char")
+        type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Char);
+      else if (typeNode.typeName == "Void")
+        type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Void);
       else
         type = std::make_shared<zir::RecordType>(typeNode.typeName);
-    }
-
-    if (typeNode.isArray)
-    {
-      size_t size = 0;
-      if (auto constInt = dynamic_cast<ConstInt *>(typeNode.arraySize.get()))
-      {
-        size = constInt->value_;
-      }
-      type = std::make_shared<zir::ArrayType>(std::move(type), size);
-    }
-
-    if (typeNode.isPointer)
-    {
-      type = std::make_shared<zir::PointerType>(std::move(type));
     }
 
     return type;
@@ -941,6 +988,13 @@ namespace sema
       if (from->getKind() == zir::TypeKind::Record)
       {
         return from->toString() == to->toString();
+      }
+      if (from->getKind() == zir::TypeKind::Array)
+      {
+        auto a1 = std::static_pointer_cast<zir::ArrayType>(from);
+        auto a2 = std::static_pointer_cast<zir::ArrayType>(to);
+        return a1->getSize() == a2->getSize() &&
+               canConvert(a1->getBaseType(), a2->getBaseType());
       }
       return true;
     }

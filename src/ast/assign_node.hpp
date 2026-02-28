@@ -7,12 +7,12 @@
 
 class AssignNode : public StatementNode {
 public:
-  std::string target_;
+  std::unique_ptr<ExpressionNode> target_;
   std::unique_ptr<ExpressionNode> expr_;
-  AssignNode() noexcept(std::is_nothrow_default_constructible<std::string>::value) = default;
+  AssignNode() noexcept = default;
 
-  AssignNode(std::string target, std::unique_ptr<ExpressionNode> expr)
-      : target_(target), expr_(std::move(expr)) {}
+  AssignNode(std::unique_ptr<ExpressionNode> target, std::unique_ptr<ExpressionNode> expr)
+      : target_(std::move(target)), expr_(std::move(expr)) {}
 
   void accept(Visitor &v) override { v.visit(*this); }
 };

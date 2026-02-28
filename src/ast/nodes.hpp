@@ -16,6 +16,7 @@
 #include "fun_decl.hpp"
 #include "if_node.hpp"
 #include "import_node.hpp"
+#include "index_access.hpp"
 #include "member_access.hpp"
 #include "node.hpp"
 #include "parameter_node.hpp"

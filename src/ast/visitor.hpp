@@ -21,6 +21,7 @@ class RecordDecl;
 class ImportNode;
 class ParameterNode;
 class TypeNode;
+class IndexAccessNode;
 
 class ExpressionNode;
 class BinExpr;
@@ -61,6 +62,7 @@ struct Visitor
   virtual void visit(ImportNode &) {}
   virtual void visit(ParameterNode &) {}
   virtual void visit(TypeNode &) {}
+  virtual void visit(IndexAccessNode &) {}
 
   virtual void visit(ExpressionNode &) {}
   virtual void visit(BinExpr &) {}

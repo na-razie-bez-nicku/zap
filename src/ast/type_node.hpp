@@ -13,6 +13,7 @@ public:
   bool isArray = false;
   bool isVarArgs = false;
   std::unique_ptr<ExpressionNode> arraySize; // nullptr for non-array types
+  std::unique_ptr<TypeNode> baseType; // For recursive types like arrays or pointers
 
   TypeNode() noexcept(std::is_nothrow_default_constructible<std::string>::value) = default;
   explicit TypeNode(const std::string &typeName_) : typeName(typeName_) {}

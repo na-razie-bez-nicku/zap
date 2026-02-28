@@ -29,6 +29,7 @@ namespace sema
     void visit(IfNode &node) override;
     void visit(WhileNode &node) override;
     void visit(MemberAccessNode &node) override;
+    void visit(IndexAccessNode &node) override;
     void visit(BreakNode &node) override;
     void visit(ContinueNode &node) override;
     void visit(AssignNode &node) override;

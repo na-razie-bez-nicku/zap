@@ -75,14 +75,14 @@ run_runtime_test() {
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
-    $ZAPC "$file" > /dev/null 2>&1
+    binfile="${file%.*}"
+    $ZAPC "$file" -o "$binfile" > /dev/null 2>&1
     local exit_code=$?
     if [ $exit_code -ne 0 ]; then
         echo -e "${RED}FAIL${NC} (compile failed)"
         return
     fi
 
-    binfile="${file%.*}"
     if [ ! -x "$binfile" ]; then
         echo -e "${RED}FAIL${NC} (binary not found)"
         return
@@ -126,6 +126,7 @@ run_runtime_test "tests/concat_char.zap" 0 "Concat char + string"
 run_runtime_test "tests/logical_ops.zap" 0 "Logical operators (&&, ||) with short-circuiting"
 run_test "tests/logical_type_error.zap" 1 "Logical operators type check"
 run_runtime_test "tests/enum_test.zap" 1 "Enum test"
+run_runtime_test "tests/array_test.zap" 0 "Array declaration, initialization, and indexing"
 
 echo "-------------------------------"
 echo "Results: $PASSED / $TOTAL passed"

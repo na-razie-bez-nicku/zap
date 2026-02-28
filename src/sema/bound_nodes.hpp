@@ -23,6 +23,7 @@ namespace sema
   class BoundUnaryExpression;
   class BoundFunctionCall;
   class BoundArrayLiteral;
+  class BoundIndexAccess;
   class BoundRecordDeclaration;
   class BoundEnumDeclaration;
   class BoundMemberAccess;
@@ -49,6 +50,7 @@ namespace sema
     virtual void visit(BoundUnaryExpression &node) = 0;
     virtual void visit(BoundFunctionCall &node) = 0;
     virtual void visit(BoundArrayLiteral &node) = 0;
+    virtual void visit(BoundIndexAccess &node) = 0;
     virtual void visit(BoundRecordDeclaration &node) = 0;
     virtual void visit(BoundEnumDeclaration &node) = 0;
     virtual void visit(BoundMemberAccess &node) = 0;
@@ -162,6 +164,19 @@ namespace sema
     void accept(BoundVisitor &v) override { v.visit(*this); }
   };
 
+  class BoundIndexAccess : public BoundExpression
+  {
+  public:
+    std::unique_ptr<BoundExpression> left;
+    std::unique_ptr<BoundExpression> index;
+
+    BoundIndexAccess(std::unique_ptr<BoundExpression> l,
+                     std::unique_ptr<BoundExpression> i,
+                     std::shared_ptr<zir::Type> t)
+        : BoundExpression(std::move(t)), left(std::move(l)), index(std::move(i)) {}
+    void accept(BoundVisitor &v) override { v.visit(*this); }
+  };
+
   class BoundVariableDeclaration : public BoundStatement
   {
   public:
@@ -186,12 +201,12 @@ namespace sema
   class BoundAssignment : public BoundStatement
   {
   public:
-    std::shared_ptr<VariableSymbol> symbol;
+    std::unique_ptr<BoundExpression> target;
     std::unique_ptr<BoundExpression> expression;
 
-    BoundAssignment(std::shared_ptr<VariableSymbol> s,
+    BoundAssignment(std::unique_ptr<BoundExpression> t,
                     std::unique_ptr<BoundExpression> e)
-        : symbol(std::move(s)), expression(std::move(e)) {}
+        : target(std::move(t)), expression(std::move(e)) {}
     void accept(BoundVisitor &v) override { v.visit(*this); }
   };
 

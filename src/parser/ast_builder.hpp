@@ -17,6 +17,7 @@
 #include "../ast/fun_call.hpp"
 #include "../ast/fun_decl.hpp"
 #include "../ast/if_node.hpp"
+#include "../ast/index_access.hpp"
 #include "../ast/parameter_node.hpp"
 #include "../ast/record_decl.hpp"
 #include "../ast/return_node.hpp"
@@ -33,9 +34,15 @@ class AstBuilder {
 public:
   std::unique_ptr<RootNode> makeRoot() { return std::make_unique<RootNode>(); }
 
-  std::unique_ptr<AssignNode> makeAssign(const std::string &target,
+  std::unique_ptr<AssignNode> makeAssign(std::unique_ptr<ExpressionNode> target,
                                          std::unique_ptr<ExpressionNode> expr) {
-    return std::make_unique<AssignNode>(target, std::move(expr));
+    return std::make_unique<AssignNode>(std::move(target), std::move(expr));
+  }
+
+  std::unique_ptr<IndexAccessNode>
+  makeIndexAccess(std::unique_ptr<ExpressionNode> left,
+                  std::unique_ptr<ExpressionNode> index) {
+    return std::make_unique<IndexAccessNode>(std::move(left), std::move(index));
   }
 
   std::unique_ptr<ArrayLiteralNode>

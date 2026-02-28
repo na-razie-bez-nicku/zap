@@ -17,7 +17,7 @@
 namespace codegen
 {
 
-  LLVMCodeGen::LLVMCodeGen() : builder_(ctx_), nextStringId_(0)
+  LLVMCodeGen::LLVMCodeGen() : builder_(ctx_), nextStringId_(0), evaluateAsAddr_(false)
   {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
@@ -317,16 +317,15 @@ namespace codegen
   void LLVMCodeGen::visit(sema::BoundAssignment &node)
   {
     node.expression->accept(*this);
-    llvm::Value *alloca = nullptr;
-    if (localValues_.count(node.symbol->name))
-    {
-      alloca = localValues_.at(node.symbol->name);
-    }
-    else
-    {
-      alloca = globalValues_.at(node.symbol->name);
-    }
-    builder_.CreateStore(lastValue_, alloca);
+    llvm::Value *val = lastValue_;
+
+    bool old = evaluateAsAddr_;
+    evaluateAsAddr_ = true;
+    node.target->accept(*this);
+    llvm::Value *alloca = lastValue_;
+    evaluateAsAddr_ = old;
+
+    builder_.CreateStore(val, alloca);
   }
 
   void LLVMCodeGen::visit(sema::BoundExpressionStatement &node)
@@ -417,18 +416,26 @@ namespace codegen
 
   void LLVMCodeGen::visit(sema::BoundVariableExpression &node)
   {
-    llvm::Value *alloca = nullptr;
+    llvm::Value *addr = nullptr;
     if (localValues_.count(node.symbol->name))
     {
-      alloca = localValues_.at(node.symbol->name);
+      addr = localValues_.at(node.symbol->name);
     }
     else
     {
-      alloca = globalValues_.at(node.symbol->name);
+      addr = globalValues_.at(node.symbol->name);
     }
-    auto *ty = toLLVMType(*node.symbol->type);
-    lastValue_ = builder_.CreateLoad(ty, alloca,
-                                     node.symbol->name);
+
+    if (evaluateAsAddr_)
+    {
+      lastValue_ = addr;
+    }
+    else
+    {
+      auto *ty = toLLVMType(*node.symbol->type);
+      lastValue_ = builder_.CreateLoad(ty, addr,
+                                       node.symbol->name);
+    }
   }
 
   void LLVMCodeGen::visit(sema::BoundBinaryExpression &node)
@@ -590,10 +597,47 @@ namespace codegen
       for (size_t i = 0; i < node.elements.size(); ++i)
       {
         node.elements[i]->accept(*this);
-        auto *ptr = builder_.CreateStructGEP(arrayTy, alloca, i);
+        auto *ptr = builder_.CreateConstGEP2_32(arrayTy, alloca, 0, (unsigned)i);
         builder_.CreateStore(lastValue_, ptr);
       }
       lastValue_ = builder_.CreateLoad(arrayTy, alloca);
+    }
+  }
+
+  void LLVMCodeGen::visit(sema::BoundIndexAccess &node)
+  {
+    bool old = evaluateAsAddr_;
+    evaluateAsAddr_ = true;
+    node.left->accept(*this);
+    llvm::Value *leftAddr = lastValue_;
+    evaluateAsAddr_ = old;
+
+    node.index->accept(*this);
+    llvm::Value *indexVal = lastValue_;
+
+    auto *leftTy = toLLVMType(*node.left->type);
+    llvm::Value *elemAddr = nullptr;
+    
+    if (leftTy->isArrayTy()) {
+        auto *i32Ty = llvm::Type::getInt32Ty(ctx_);
+        std::vector<llvm::Value *> indices = {
+            llvm::ConstantInt::get(i32Ty, 0),
+            builder_.CreateIntCast(indexVal, i32Ty, /*isSigned=*/false)
+        };
+        elemAddr = builder_.CreateInBoundsGEP(leftTy, leftAddr, indices);
+    } else if (leftTy->isPointerTy()) {
+        // Pointer indexing (e.g. string[0])
+        auto *baseTy = toLLVMType(*static_cast<zir::PointerType&>(*node.left->type).getBaseType());
+        elemAddr = builder_.CreateInBoundsGEP(baseTy, leftAddr, indexVal);
+    } else {
+        throw std::runtime_error("Type '" + node.left->type->toString() + "' does not support indexing.");
+    }
+
+    if (evaluateAsAddr_) {
+        lastValue_ = elemAddr;
+    } else {
+        auto *ty = toLLVMType(*node.type);
+        lastValue_ = builder_.CreateLoad(ty, elemAddr, "index_access");
     }
   }
 

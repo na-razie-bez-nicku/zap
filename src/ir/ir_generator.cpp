@@ -142,11 +142,14 @@ namespace zir
 
   void BoundIRGenerator::visit(sema::BoundAssignment &node)
   {
-    auto reg = symbolMap_[node.symbol];
+    node.target->accept(*this);
+    auto target = valueStack_.top();
+    valueStack_.pop();
+
     node.expression->accept(*this);
     auto val = valueStack_.top();
     valueStack_.pop();
-    currentBlock_->addInstruction(std::make_unique<StoreInst>(val, reg));
+    currentBlock_->addInstruction(std::make_unique<StoreInst>(val, target));
   }
 
   void BoundIRGenerator::visit(sema::BoundExpressionStatement &node)
@@ -422,6 +425,31 @@ namespace zir
     }
     auto condLabel = loopLabelStack_.back().first;
     currentBlock_->addInstruction(std::make_unique<BranchInst>(condLabel));
+  }
+
+  void BoundIRGenerator::visit(sema::BoundIndexAccess &node)
+  {
+    node.left->accept(*this);
+    auto left = valueStack_.top();
+    valueStack_.pop();
+
+    node.index->accept(*this);
+    auto indexVal = valueStack_.top();
+    valueStack_.pop();
+
+    int idx = 0;
+    if (auto *c = dynamic_cast<Constant *>(indexVal.get())) {
+        try {
+            idx = std::stoi(c->getName());
+        } catch (...) {}
+    }
+
+    auto ptr = createRegister(std::make_shared<PointerType>(node.type));
+    currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(ptr, left, idx));
+    
+    auto res = createRegister(node.type);
+    currentBlock_->addInstruction(std::make_unique<LoadInst>(res, ptr));
+    valueStack_.push(res);
   }
 
 } // namespace zir
