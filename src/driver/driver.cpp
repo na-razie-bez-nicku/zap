@@ -370,6 +370,9 @@ bool driver::link() {
   if(inc_stdlib){
     argsllvm.push_back(ZAPC_STDLIB_PATH);
   }
+  else{
+    argsllvm.push_back("-nostdlib");
+  }
 
   for (const auto &s : args) {
     argsllvm.push_back(s);
