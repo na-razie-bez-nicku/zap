@@ -440,6 +440,54 @@ namespace codegen
 
   void LLVMCodeGen::visit(sema::BoundBinaryExpression &node)
   {
+    if (node.op == "&&")
+    {
+      auto *rhsBB = llvm::BasicBlock::Create(ctx_, "and.rhs", currentFn_);
+      auto *mergeBB = llvm::BasicBlock::Create(ctx_, "and.merge", currentFn_);
+
+      node.left->accept(*this);
+      auto *lhs = lastValue_;
+      auto *leftBB = builder_.GetInsertBlock();
+      builder_.CreateCondBr(lhs, rhsBB, mergeBB);
+
+      builder_.SetInsertPoint(rhsBB);
+      node.right->accept(*this);
+      auto *rhs = lastValue_;
+      auto *actualRhsBB = builder_.GetInsertBlock();
+      builder_.CreateBr(mergeBB);
+
+      builder_.SetInsertPoint(mergeBB);
+      auto *phi = builder_.CreatePHI(llvm::Type::getInt1Ty(ctx_), 2, "and.res");
+      phi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx_), 0), leftBB);
+      phi->addIncoming(rhs, actualRhsBB);
+      lastValue_ = phi;
+      return;
+    }
+
+    if (node.op == "||")
+    {
+      auto *rhsBB = llvm::BasicBlock::Create(ctx_, "or.rhs", currentFn_);
+      auto *mergeBB = llvm::BasicBlock::Create(ctx_, "or.merge", currentFn_);
+
+      node.left->accept(*this);
+      auto *lhs = lastValue_;
+      auto *leftBB = builder_.GetInsertBlock();
+      builder_.CreateCondBr(lhs, mergeBB, rhsBB);
+
+      builder_.SetInsertPoint(rhsBB);
+      node.right->accept(*this);
+      auto *rhs = lastValue_;
+      auto *actualRhsBB = builder_.GetInsertBlock();
+      builder_.CreateBr(mergeBB);
+
+      builder_.SetInsertPoint(mergeBB);
+      auto *phi = builder_.CreatePHI(llvm::Type::getInt1Ty(ctx_), 2, "or.res");
+      phi->addIncoming(llvm::ConstantInt::get(llvm::Type::getInt1Ty(ctx_), 1), leftBB);
+      phi->addIncoming(rhs, actualRhsBB);
+      lastValue_ = phi;
+      return;
+    }
+
     node.left->accept(*this);
     auto *lhs = lastValue_;
     node.right->accept(*this);
