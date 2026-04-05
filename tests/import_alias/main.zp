@@ -1,0 +1,5 @@
+import "helper.zp" { answer as value };
+
+fun main() Int {
+  return value();
+}

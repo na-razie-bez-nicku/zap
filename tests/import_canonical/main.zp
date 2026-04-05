@@ -1,0 +1,6 @@
+import "./helper.zp";
+import "./sub/../helper.zp";
+
+fun main() Int {
+  return helper.answer();
+}

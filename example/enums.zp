@@ -1,4 +1,4 @@
-// example/enums.zap
+// example/enums.zp
 enum Color { Red, Green, Blue }
 
 enum Size { Small, Medium, Large, ExtraLarge }

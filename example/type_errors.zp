@@ -1,4 +1,4 @@
-// example/type_errors.zap
+// example/type_errors.zp
 
 fun main() {
     // Valid declarations and assignments

@@ -1,4 +1,4 @@
-import "helper.zap";
+import "helper.zp";
 
 fun main() Int {
   return helper.answer();

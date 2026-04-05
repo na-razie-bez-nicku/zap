@@ -1,0 +1,6 @@
+import "first.zp" as std;
+import "second.zp" as std;
+
+fun main() Int {
+  return std.answer();
+}

@@ -1,4 +1,4 @@
-// example/records.zap
+// example/records.zp
 record Person {
     name: String,
     age: Int; // Test both separators

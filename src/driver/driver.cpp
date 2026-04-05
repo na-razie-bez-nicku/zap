@@ -23,9 +23,9 @@ namespace zap {
 bool compileSourceZIR(sema::BoundRootNode &node, std::ostream &ofoutput);
 namespace {
 
-std::string stripZapExtension(const std::filesystem::path &path) {
+std::string stripSourceExtension(const std::filesystem::path &path) {
   auto normalized = path.generic_string();
-  if (path.extension() == ".zap" && normalized.size() >= 4) {
+  if (path.extension() == ".zp" && normalized.size() >= 4) {
     normalized.resize(normalized.size() - 4);
   }
   return normalized;
@@ -46,7 +46,7 @@ std::string computeLogicalModulePath(const std::filesystem::path &canonicalPath)
     }
 
     auto rel = std::filesystem::relative(canonicalPath, root);
-    auto stripped = stripZapExtension(rel);
+    auto stripped = stripSourceExtension(rel);
     if (prefix.empty()) {
       return stripped;
     }
@@ -59,7 +59,7 @@ std::string computeLogicalModulePath(const std::filesystem::path &canonicalPath)
   if (auto logical = buildRelative(cwdRoot)) {
     return *logical;
   }
-  return stripZapExtension(canonicalPath.filename());
+  return stripSourceExtension(canonicalPath.filename());
 }
 
 bool readSourceFile(const std::filesystem::path &path, std::string &content) {
@@ -93,6 +93,7 @@ bool resolveImportTargets(const std::filesystem::path &modulePath,
   } else {
     resolvedPath = modulePath.parent_path() / importNode.path;
   }
+  resolvedPath = resolvedPath.lexically_normal();
 
   auto tryFile = [&](const std::filesystem::path &path) -> bool {
     if (std::filesystem::exists(path) && std::filesystem::is_regular_file(path)) {
@@ -106,7 +107,7 @@ bool resolveImportTargets(const std::filesystem::path &modulePath,
     return false;
   }
 
-  if (resolvedPath.extension() != ".zap" && tryFile(resolvedPath.string() + ".zap")) {
+  if (resolvedPath.extension() != ".zp" && tryFile(resolvedPath.string() + ".zp")) {
     return false;
   }
 
@@ -116,7 +117,7 @@ bool resolveImportTargets(const std::filesystem::path &modulePath,
       if (!entry.is_regular_file()) {
         continue;
       }
-      if (entry.path().extension() == ".zap") {
+      if (entry.path().extension() == ".zp") {
         targets.push_back(std::filesystem::weakly_canonical(entry.path()));
       }
     }
@@ -405,7 +406,7 @@ bool driver::splitInputs() {
     std::string ext = input_path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    if (ext == ".zap") {
+    if (ext == ".zp") {
       sources.emplace_back(std::move(input_path));
     } else if (ext == ".a" || ext == ".o") {
       objects.emplace_back(std::move(input_path));
