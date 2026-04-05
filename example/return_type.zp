@@ -1,4 +1,4 @@
-// example/return_type.zap
+// example/return_type.zp
 
 fun returns_int() Int {
     var a: Int = 10;

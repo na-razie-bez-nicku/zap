@@ -37,9 +37,9 @@ run_test() {
 echo "--- Zap Compiler Test Suite ---"
 
 # Valid code (should pass)
-run_test "tests/valid.zap" 0 "Valid program"
-run_test "tests/return_void.zap" 0 "Return in void function"
-run_test "tests/modulo_test.zap" 0 "Modulo operator test"
+run_test "tests/valid.zp" 0 "Valid program"
+run_test "tests/return_void.zp" 0 "Return in void function"
+run_test "tests/modulo_test.zp" 0 "Modulo operator test"
 
 # Warning test: compile and check stderr for the warning message
 run_warning_test() {
@@ -141,66 +141,66 @@ run_warning_runtime_test() {
 }
 
 # Warning test: non-void function without return should emit warning
-run_warning_test "tests/warn_missing_return.zap" "Warning: missing return in non-void function"
+run_warning_test "tests/warn_missing_return.zp" "Warning: missing return in non-void function"
 
 # Global variable test
-run_warning_runtime_test "tests/global_var_test.zap" 0 "Global variables are discouraged" "Global variable with warning"
+run_warning_runtime_test "tests/global_var_test.zp" 0 "Global variables are discouraged" "Global variable with warning"
 
 # Runtime test: main without explicit return type should default to Int and return 0
-run_runtime_test "tests/main_implicit.zap" 0 "Main implicit return type and implicit return 0"
+run_runtime_test "tests/main_implicit.zp" 0 "Main implicit return type and implicit return 0"
 
 # Lexer errors (exit code 1)
-run_test "tests/lexer_error.zap" 1 "Lexer error: Unterminated string"
+run_test "tests/lexer_error.zp" 1 "Lexer error: Unterminated string"
 
 # Syntax errors (exit code 1)
-run_test "tests/syntax_error.zap" 1 "Syntax error: Missing semicolons"
+run_test "tests/syntax_error.zp" 1 "Syntax error: Missing semicolons"
 
 # Semantic errors (exit code 1)
-run_test "tests/sema_error.zap" 1 "Semantic error: Undefined variable"
+run_test "tests/sema_error.zp" 1 "Semantic error: Undefined variable"
 
 # Multiple errors (exit code 1)
-run_test "tests/syntax_error.zap" 1 "Multiple syntax errors"
+run_test "tests/syntax_error.zp" 1 "Multiple syntax errors"
 
 # Concat tests
-run_runtime_test "tests/concat.zap" 0 "Concat literal strings"
-run_test "tests/concat_char.zap" 1 "Concat char + string is currently rejected"
+run_runtime_test "tests/concat.zp" 0 "Concat literal strings"
+run_test "tests/concat_char.zp" 1 "Concat char + string is currently rejected"
 
 # Logical operator tests
-run_runtime_test "tests/logical_ops.zap" 0 "Logical operators (&&, ||) with short-circuiting"
-run_test "tests/logical_type_error.zap" 1 "Logical operators type check"
-run_runtime_test "tests/if_else_if.zap" 0 "If / else if / else chains"
-run_runtime_test "tests/if_nested.zap" 0 "Nested if statements"
-run_runtime_test "tests/if_state_merge.zap" 0 "If branches mutating shared state"
-run_runtime_test "tests/if_return_paths.zap" 0 "If branches with multiple return paths"
-run_test "tests/if_condition_error.zap" 1 "If condition type check"
-run_runtime_test "tests/ternary_test.zap" 0 "Ternary operator"
-run_test "tests/ternary_condition_error.zap" 1 "Ternary condition type check"
-run_test "tests/ternary_type_error.zap" 1 "Ternary branch type check"
-run_runtime_test "tests/enum_test.zap" 1 "Enum test"
-run_runtime_test "tests/array_test.zap" 0 "Array declaration, initialization, and indexing"
-run_test "tests/array_const_size.zap" 1 "Array size as a constant is currently rejected"
+run_runtime_test "tests/logical_ops.zp" 0 "Logical operators (&&, ||) with short-circuiting"
+run_test "tests/logical_type_error.zp" 1 "Logical operators type check"
+run_runtime_test "tests/if_else_if.zp" 0 "If / else if / else chains"
+run_runtime_test "tests/if_nested.zp" 0 "Nested if statements"
+run_runtime_test "tests/if_state_merge.zp" 0 "If branches mutating shared state"
+run_runtime_test "tests/if_return_paths.zp" 0 "If branches with multiple return paths"
+run_test "tests/if_condition_error.zp" 1 "If condition type check"
+run_runtime_test "tests/ternary_test.zp" 0 "Ternary operator"
+run_test "tests/ternary_condition_error.zp" 1 "Ternary condition type check"
+run_test "tests/ternary_type_error.zp" 1 "Ternary branch type check"
+run_runtime_test "tests/enum_test.zp" 1 "Enum test"
+run_runtime_test "tests/array_test.zp" 0 "Array declaration, initialization, and indexing"
+run_test "tests/array_const_size.zp" 1 "Array size as a constant is currently rejected"
 
 # Struct tests
-run_runtime_test "tests/struct_test.zap" 0 "Basic struct member access"
-run_runtime_test "tests/struct_nested_test.zap" 0 "Nested struct member access"
-run_runtime_test "tests/struct_fn_test.zap" 0 "Structs as function parameters and return values"
-run_runtime_test "tests/struct_array_test.zap" 0 "Arrays of structs"
-run_runtime_test "tests/struct_types_test.zap" 0 "Structs with diverse field types"
-run_runtime_test "tests/precedence_test.zap" 0 "Operator precedence (NOT vs Member access)"
-run_runtime_test "tests/type_alias.zap" 42 "Type aliasing (alias Name = Type)"
-run_runtime_test "tests/ref_test.zap" 0 "Reference type test"
-run_runtime_test "tests/import_public/main.zap" 0 "Importing a public function through file namespace"
-run_runtime_test "tests/import_flat/main.zap" 0 "Selective flat import with braces"
-run_runtime_test "tests/import_alias/main.zap" 0 "Selective import alias with as"
-run_runtime_test "tests/import_module_alias/main.zap" 0 "Module namespace alias with as"
-run_runtime_test "tests/import_module_alias_same/main.zap" 0 "The same module may reuse the same alias"
-run_test "tests/import_module_alias_conflict/main.zap" 1 "Different modules cannot reuse the same alias"
-run_runtime_test "tests/import_folder/main.zap" 0 "Importing an entire folder as namespaces"
-run_runtime_test "tests/import_canonical/main.zap" 0 "Import paths resolving to the same file share one module"
-run_runtime_test "tests/import_type/main.zap" 0 "Using imported public struct types"
-run_runtime_test "tests/import_std_io/main.zap" 0 "Importing the builtin std/io module"
-run_runtime_test "tests/import_std_string/main.zap" 0 "Importing the builtin std/string module"
-run_test "tests/import_private_fail/main.zap" 1 "Private module member access is rejected"
+run_runtime_test "tests/struct_test.zp" 0 "Basic struct member access"
+run_runtime_test "tests/struct_nested_test.zp" 0 "Nested struct member access"
+run_runtime_test "tests/struct_fn_test.zp" 0 "Structs as function parameters and return values"
+run_runtime_test "tests/struct_array_test.zp" 0 "Arrays of structs"
+run_runtime_test "tests/struct_types_test.zp" 0 "Structs with diverse field types"
+run_runtime_test "tests/precedence_test.zp" 0 "Operator precedence (NOT vs Member access)"
+run_runtime_test "tests/type_alias.zp" 42 "Type aliasing (alias Name = Type)"
+run_runtime_test "tests/ref_test.zp" 0 "Reference type test"
+run_runtime_test "tests/import_public/main.zp" 0 "Importing a public function through file namespace"
+run_runtime_test "tests/import_flat/main.zp" 0 "Selective flat import with braces"
+run_runtime_test "tests/import_alias/main.zp" 0 "Selective import alias with as"
+run_runtime_test "tests/import_module_alias/main.zp" 0 "Module namespace alias with as"
+run_runtime_test "tests/import_module_alias_same/main.zp" 0 "The same module may reuse the same alias"
+run_test "tests/import_module_alias_conflict/main.zp" 1 "Different modules cannot reuse the same alias"
+run_runtime_test "tests/import_folder/main.zp" 0 "Importing an entire folder as namespaces"
+run_runtime_test "tests/import_canonical/main.zp" 0 "Import paths resolving to the same file share one module"
+run_runtime_test "tests/import_type/main.zp" 0 "Using imported public struct types"
+run_runtime_test "tests/import_std_io/main.zp" 0 "Importing the builtin std/io module"
+run_runtime_test "tests/import_std_string/main.zp" 0 "Importing the builtin std/string module"
+run_test "tests/import_private_fail/main.zp" 1 "Private module member access is rejected"
 
 echo "-------------------------------"
 echo "Results: $PASSED / $TOTAL passed"

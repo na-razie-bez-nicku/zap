@@ -180,7 +180,7 @@ private:
                                    const std::filesystem::path &entryPath);
 
   std::vector<std::string> inputs;            ///< A vector of input files.
-  std::vector<std::filesystem::path> sources; ///< A vector of .zap files.
+  std::vector<std::filesystem::path> sources; ///< A vector of .zp files.
   std::vector<std::filesystem::path> objects; ///< A vector of .o files.
   std::vector<std::filesystem::path>
       cleanups;                 ///< A vector of files that need to be deleted.

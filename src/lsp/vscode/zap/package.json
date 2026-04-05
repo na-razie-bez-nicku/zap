@@ -33,7 +33,7 @@
           "zap"
         ],
         "extensions": [
-          ".zap"
+          ".zp"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -41,7 +41,7 @@
     "grammars": [
       {
         "language": "zap",
-        "scopeName": "source.zap",
+        "scopeName": "source.zp",
         "path": "./syntaxes/zap.tmLanguage.json"
       }
     ]
