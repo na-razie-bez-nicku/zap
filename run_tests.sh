@@ -148,6 +148,7 @@ run_warning_runtime_test "tests/global_var_test.zp" 0 "Global variables are disc
 
 # Runtime test: main without explicit return type should default to Int and return 0
 run_runtime_test "tests/main_implicit.zp" 0 "Main implicit return type and implicit return 0"
+run_runtime_test "tests/ext_default_void_runtime.zp" 0 "External function without return type defaults to Void at runtime"
 
 # Lexer errors (exit code 1)
 run_test "tests/lexer_error.zp" 1 "Lexer error: Unterminated string"
@@ -157,6 +158,7 @@ run_test "tests/syntax_error.zp" 1 "Syntax error: Missing semicolons"
 
 # Semantic errors (exit code 1)
 run_test "tests/sema_error.zp" 1 "Semantic error: Undefined variable"
+run_test "tests/ext_default_void_type_error.zp" 1 "External function without return type cannot be used as Int"
 
 # Multiple errors (exit code 1)
 run_test "tests/syntax_error.zp" 1 "Multiple syntax errors"

@@ -1,0 +1,6 @@
+ext fun printInt(v: Int);
+
+fun main() Int {
+    var x: Int = printInt(42);
+    return 0;
+}

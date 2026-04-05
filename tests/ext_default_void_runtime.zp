@@ -1,0 +1,6 @@
+ext fun exit(code: Int);
+
+fun main() Int {
+    exit(0);
+    return 1;
+}

@@ -240,7 +240,7 @@ namespace zap
     }
     else
     {
-      extDecl->returnType_ = _builder.makeType("void");
+      extDecl->returnType_ = _builder.makeType("Void");
       const auto &nextToken = peek();
       _builder.setSpan(extDecl->returnType_.get(),
                        SourceSpan(nextToken.span.line, nextToken.span.column,
