@@ -101,6 +101,40 @@ run_runtime_test() {
     fi
 }
 
+run_runtime_args_test() {
+    local file=$1
+    local expected_exit_code=$2
+    local description=$3
+    shift 3
+
+    ((TOTAL++))
+    echo -n "Running $description ($file)... "
+
+    binfile="${file%.*}"
+    $ZAPC "$file" -o "$binfile" > /dev/null 2>&1
+    local exit_code=$?
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (compile failed)"
+        return
+    fi
+
+    if [ ! -x "$binfile" ]; then
+        echo -e "${RED}FAIL${NC} (binary not found)"
+        return
+    fi
+
+    ./$binfile "$@" > /dev/null 2>&1
+    local run_code=$?
+    rm -f "$binfile"
+
+    if [ $run_code -eq $expected_exit_code ]; then
+        echo -e "${GREEN}PASS${NC}"
+        ((PASSED++))
+    else
+        echo -e "${RED}FAIL${NC} (expected $expected_exit_code, got $run_code)"
+    fi
+}
+
 # Warning + Runtime test: check for warning AND exit code
 run_warning_runtime_test() {
     local file=$1
@@ -149,6 +183,7 @@ run_warning_runtime_test "tests/global_var_test.zp" 0 "Global variables are disc
 # Runtime test: main without explicit return type should default to Int and return 0
 run_runtime_test "tests/main_implicit.zp" 0 "Main implicit return type and implicit return 0"
 run_runtime_test "tests/ext_default_void_runtime.zp" 0 "External function without return type defaults to Void at runtime"
+run_runtime_args_test "tests/process_args_test.zp" 0 "Process argument access" alpha beta gamma
 
 # Lexer errors (exit code 1)
 run_test "tests/lexer_error.zp" 1 "Lexer error: Unterminated string"

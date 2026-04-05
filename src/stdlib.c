@@ -58,6 +58,15 @@ typedef struct {
     long len;
 } zap_string_t;
 
+static long zap_process_argc = 0;
+static char **zap_process_argv = NULL;
+
+void __zap_process_set_args(int argc, char **argv)
+{
+    zap_process_argc = argc;
+    zap_process_argv = argv;
+}
+
 void println(zap_string_t s)
 {
     printStringPtrLen(s.ptr, s.len);
@@ -106,6 +115,22 @@ zap_string_t getLn()
 long stringLen(zap_string_t s)
 {
     return s.len;
+}
+
+long argc()
+{
+    return zap_process_argc;
+}
+
+zap_string_t argv(long i)
+{
+    if (i < 0 || i >= zap_process_argc || !zap_process_argv || !zap_process_argv[i])
+    {
+        return (zap_string_t){.ptr = "", .len = 0};
+    }
+
+    const char *arg = zap_process_argv[i];
+    return (zap_string_t){.ptr = arg, .len = (long)strlen(arg)};
 }
 
 long len(zap_string_t s)

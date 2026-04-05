@@ -186,6 +186,13 @@ namespace codegen
   LLVMCodeGen::buildFunctionType(const sema::FunctionSymbol &sym)
   {
     std::vector<llvm::Type *> paramTypes;
+    if (sym.linkName == "main")
+    {
+      paramTypes.push_back(llvm::Type::getInt32Ty(ctx_));
+      paramTypes.push_back(
+          llvm::PointerType::getUnqual(llvm::PointerType::getUnqual(
+              llvm::Type::getInt8Ty(ctx_))));
+    }
     for (const auto &param : sym.parameters)
     {
       auto *ty = toLLVMType(*param->type);
@@ -227,7 +234,26 @@ namespace codegen
                                        fn->symbol->linkName, *module_);
       size_t idx = 0;
       for (auto &arg : f->args())
+      {
+        if (fn->symbol->linkName == "main")
+        {
+          if (idx == 0)
+          {
+            arg.setName("argc");
+            ++idx;
+            continue;
+          }
+          if (idx == 1)
+          {
+            arg.setName("argv");
+            ++idx;
+            continue;
+          }
+          arg.setName(fn->symbol->parameters[idx++ - 2]->name);
+          continue;
+        }
         arg.setName(fn->symbol->parameters[idx++]->name);
+      }
 
       functionMap_[fn->symbol->linkName] = f;
     }
@@ -251,10 +277,36 @@ namespace codegen
     auto *entry = llvm::BasicBlock::Create(ctx_, "entry", fn);
     builder_.SetInsertPoint(entry);
 
+    auto argIt = fn->arg_begin();
+    if (node.symbol->linkName == "main")
+    {
+      auto *i32Ty = llvm::Type::getInt32Ty(ctx_);
+      auto *i8PtrTy = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(ctx_));
+      auto *argvTy = llvm::PointerType::getUnqual(i8PtrTy);
+
+      argIt->setName("argc");
+      llvm::Value *argcValue = &*argIt++;
+      argIt->setName("argv");
+      llvm::Value *argvValue = &*argIt++;
+
+      if (functionMap_.count("__zap_process_set_args") == 0)
+      {
+        auto *ft = llvm::FunctionType::get(
+            llvm::Type::getVoidTy(ctx_), {i32Ty, argvTy}, false);
+        auto *setArgsFn = llvm::Function::Create(
+            ft, llvm::Function::ExternalLinkage, "__zap_process_set_args", *module_);
+        functionMap_["__zap_process_set_args"] = setArgsFn;
+      }
+
+      builder_.CreateCall(functionMap_.at("__zap_process_set_args"),
+                          {builder_.CreateIntCast(argcValue, i32Ty, true), argvValue});
+    }
+
     // Spill each argument to a stack slot so we can reassign params later.
     size_t idx = 0;
-    for (auto &arg : fn->args())
+    for (; argIt != fn->arg_end(); ++argIt)
     {
+      auto &arg = *argIt;
       const auto &param = node.symbol->parameters[idx++];
       auto *alloca = createEntryAlloca(fn, param->name, arg.getType());
       builder_.CreateStore(&arg, alloca);
