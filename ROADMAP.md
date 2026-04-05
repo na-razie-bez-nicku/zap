@@ -16,27 +16,27 @@
 
 ## Phase 2 — Module System
 
-- [ ] `import "path";`
-- [ ] Each file is its own namespace
+- [x] `import "path";`
+- [x] Each file is its own namespace
 - [ ] Circular import detection
-- [ ] `main` function resolution across files
+- [x] `main` function resolution across files
 
 ---
 
 ## Phase 3 — Access Control
 
-- [ ] `pub` keyword
-- [ ] `priv` keyword (or default-private semantics)
-- [ ] Visibility enforced at compile time
+- [x] `pub` keyword
+- [x] `priv` keyword (or default-private semantics)
+- [x] Visibility enforced at compile time
 
 ---
 
 ## Phase 4 — References & `ref`
 
-- [ ] `ref` keyword
-- [ ] Reference semantics in function signatures: `fun foo(x: ref Int64) Void {}`
-- [ ] No dangling references to stack values
-- [ ] `ref` vs value semantics enforced by the compiler
+- [x] `ref` keyword
+- [x] Reference semantics in function signatures: `fun foo(x: ref Int64) Void {}`
+- [x] No dangling references to stack values
+- [x] `ref` vs value semantics enforced by the compiler
 
 ---
 
