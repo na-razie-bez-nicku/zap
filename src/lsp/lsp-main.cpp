@@ -14,6 +14,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unistd.h>
 
 using namespace zap::lsp;
 
@@ -82,6 +83,18 @@ std::filesystem::path stdlibRootPath() {
       return std::filesystem::path(configured);
     }
   }
+
+  std::error_code ec;
+  auto exePath = std::filesystem::read_symlink("/proc/self/exe", ec);
+  if (!ec && !exePath.empty()) {
+    auto siblingStd =
+        std::filesystem::weakly_canonical(exePath).parent_path() / "std";
+    if (std::filesystem::exists(siblingStd) &&
+        std::filesystem::is_directory(siblingStd)) {
+      return siblingStd;
+    }
+  }
+
   return std::filesystem::path(ZAPC_STDLIB_DIR);
 }
 

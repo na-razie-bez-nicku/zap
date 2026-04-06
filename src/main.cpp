@@ -2,6 +2,9 @@
 
 int main(int argc, char **argv) {
   zap::driver zapcDriver;
+  if (argc > 0 && argv[0]) {
+    zapcDriver.setExecutablePath(argv[0]);
+  }
 
   if (!zapcDriver.parseArgs(argc, argv)) {
     return 0;

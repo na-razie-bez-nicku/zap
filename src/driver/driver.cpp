@@ -18,10 +18,49 @@
 #include <optional>
 #include <set>
 #include <string_view>
+#include <unistd.h>
 
 namespace zap {
 bool compileSourceZIR(sema::BoundRootNode &node, std::ostream &ofoutput);
 namespace {
+
+std::filesystem::path g_executable_path;
+
+std::optional<std::filesystem::path> currentExecutablePath(
+    const std::filesystem::path &argv0Hint) {
+  std::error_code ec;
+  auto procPath = std::filesystem::read_symlink("/proc/self/exe", ec);
+  if (!ec && !procPath.empty()) {
+    return std::filesystem::weakly_canonical(procPath);
+  }
+
+  if (!argv0Hint.empty()) {
+    auto resolved = argv0Hint.is_absolute()
+                        ? argv0Hint
+                        : std::filesystem::current_path() / argv0Hint;
+    return std::filesystem::weakly_canonical(resolved, ec);
+  }
+
+  return std::nullopt;
+}
+
+std::filesystem::path stdlibRootPath(const std::filesystem::path &argv0Hint) {
+  if (const char *configured = std::getenv("ZAPC_STDLIB_DIR")) {
+    if (*configured != '\0') {
+      return std::filesystem::path(configured);
+    }
+  }
+
+  if (auto exePath = currentExecutablePath(argv0Hint)) {
+    auto siblingStd = exePath->parent_path() / "std";
+    if (std::filesystem::exists(siblingStd) &&
+        std::filesystem::is_directory(siblingStd)) {
+      return siblingStd;
+    }
+  }
+
+  return std::filesystem::path(ZAPC_STDLIB_DIR);
+}
 
 std::string stripSourceExtension(const std::filesystem::path &path) {
   auto normalized = path.generic_string();
@@ -32,8 +71,7 @@ std::string stripSourceExtension(const std::filesystem::path &path) {
 }
 
 std::string computeLogicalModulePath(const std::filesystem::path &canonicalPath) {
-  auto stdRoot =
-      std::filesystem::weakly_canonical(std::filesystem::path(ZAPC_STDLIB_DIR));
+  auto stdRoot = std::filesystem::weakly_canonical(stdlibRootPath(g_executable_path));
   auto cwdRoot = std::filesystem::weakly_canonical(std::filesystem::current_path());
 
   auto buildRelative = [&](const std::filesystem::path &root,
@@ -88,7 +126,7 @@ bool resolveImportTargets(const std::filesystem::path &modulePath,
                           std::vector<std::filesystem::path> &targets) {
   std::filesystem::path resolvedPath;
   if (importNode.path.rfind("std/", 0) == 0) {
-    resolvedPath = std::filesystem::path(ZAPC_STDLIB_DIR) /
+    resolvedPath = stdlibRootPath(g_executable_path) /
                    importNode.path.substr(std::string("std/").size());
   } else {
     resolvedPath = modulePath.parent_path() / importNode.path;
@@ -211,6 +249,13 @@ bool loadModuleGraph(
 
 } // namespace
 
+driver::driver() = default;
+
+void driver::setExecutablePath(std::filesystem::path path) {
+  executable_path = std::move(path);
+  g_executable_path = executable_path;
+}
+
 bool compileLoadedModules(driver &drv, const std::filesystem::path &entryPath) {
   std::map<std::string, std::unique_ptr<sema::ModuleInfo>> moduleMap;
   std::set<std::string> visiting;
@@ -304,8 +349,6 @@ bool compileLoadedModules(driver &drv, const std::filesystem::path &entryPath) {
 
   return false;
 }
-
-driver::driver() {}
 
 bool driver::parseArgs(int argc, char **argv) {
   std::vector<std::string_view> args;
