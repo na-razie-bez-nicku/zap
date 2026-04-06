@@ -16,6 +16,7 @@ namespace zap {
 class driver {
 public:
   driver();
+  void setExecutablePath(std::filesystem::path path);
 
   /// @brief Parses the provided args.
   /// @param argc How many arguments.
@@ -190,6 +191,7 @@ private:
   bool implicit_output;          ///< Was the output implicit or explicit.
   bool inc_stdlib;               ///< Include the zap stdlib.o or not.
   bool allow_unsafe = false;     ///< Allow unsafe language features.
+  std::filesystem::path executable_path; ///< Path to the running executable.
 
   /// @brief Used internally by the compile() function.
   /// @return True if an error has occured.
