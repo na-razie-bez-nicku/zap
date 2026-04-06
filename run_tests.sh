@@ -135,6 +135,35 @@ run_runtime_args_test() {
     fi
 }
 
+run_compile_args_test() {
+    local file=$1
+    local output=$2
+    local description=$3
+    shift 3
+
+    ((TOTAL++))
+    echo -n "Running $description ($file)... "
+
+    rm -f "$output"
+    $ZAPC "$file" "$@" -o "$output" > /dev/null 2>&1
+    local exit_code=$?
+
+    if [ $exit_code -ne 0 ]; then
+        echo -e "${RED}FAIL${NC} (compile failed)"
+        rm -f "$output"
+        return
+    fi
+
+    if [ ! -f "$output" ]; then
+        echo -e "${RED}FAIL${NC} (output not found)"
+        return
+    fi
+
+    rm -f "$output"
+    echo -e "${GREEN}PASS${NC}"
+    ((PASSED++))
+}
+
 # Warning + Runtime test: check for warning AND exit code
 run_warning_runtime_test() {
     local file=$1
@@ -182,6 +211,7 @@ run_warning_runtime_test "tests/global_var_test.zp" 0 "Global variables are disc
 
 # Runtime test: main without explicit return type should default to Int and return 0
 run_runtime_test "tests/main_implicit.zp" 0 "Main implicit return type and implicit return 0"
+run_compile_args_test "tests/nostdlib_ext_main_object.zp" "tests/nostdlib_ext_main_object.o" "Object compile with -nostdlib and external main" -nostdlib -c
 run_runtime_test "tests/ext_default_void_runtime.zp" 0 "External function without return type defaults to Void at runtime"
 run_runtime_args_test "tests/process_args_test.zp" 0 "Process argument access" alpha beta gamma
 run_runtime_test "tests/process_exec_test.zp" 0 "Process execution"

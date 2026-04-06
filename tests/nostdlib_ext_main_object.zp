@@ -1,0 +1,6 @@
+ext fun main() Int;
+
+fun __premain() Int {
+  var errc: Int = 0;
+  return errc;
+}
