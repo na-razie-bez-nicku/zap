@@ -1,0 +1,47 @@
+import "std/convert" { toString, toInt, toFloat, toFloat64, toBool, toChar };
+import "std/string" { eq };
+
+fun main() Int {
+    if !eq(toString(42), "42") {
+        return 1;
+    }
+    if !eq(toString(2.5), "2.5") {
+        return 2;
+    }
+    if !eq(toString(true), "true") {
+        return 3;
+    }
+    if !eq(toString('Z'), "Z") {
+        return 4;
+    }
+
+    if toInt(true) != 1 {
+        return 5;
+    }
+    if toInt('A') != 65 {
+        return 6;
+    }
+    if toInt(8.9) != 8 {
+        return 7;
+    }
+
+    if toFloat(7) != 7.0 {
+        return 8;
+    }
+    if toFloat64(false) != toFloat64(0.0) {
+        return 9;
+    }
+
+    if !toBool("true") {
+        return 10;
+    }
+    if toBool(0) {
+        return 11;
+    }
+
+    if toChar(66) != 'B' {
+        return 12;
+    }
+
+    return 0;
+}

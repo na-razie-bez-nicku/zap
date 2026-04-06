@@ -1,0 +1,7 @@
+pub fun pick(x: Int) Int {
+    return 1;
+}
+
+pub fun pick(x: String) Int {
+    return 2;
+}

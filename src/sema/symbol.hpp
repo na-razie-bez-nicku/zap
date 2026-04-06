@@ -8,7 +8,7 @@
 
 namespace sema {
 
-enum class SymbolKind { Variable, Function, Type, Module };
+enum class SymbolKind { Variable, Function, OverloadSet, Type, Module };
 
 class BoundExpression;
 
@@ -77,6 +77,25 @@ public:
 
   std::shared_ptr<VariableSymbol> variadicParameter() const {
     return hasVariadicParameter() ? parameters.back() : nullptr;
+  }
+};
+
+class OverloadSetSymbol : public Symbol {
+public:
+  std::vector<std::shared_ptr<FunctionSymbol>> overloads;
+
+  explicit OverloadSetSymbol(std::string n, std::string module = "",
+                             Visibility vis = Visibility::Private)
+      : Symbol(std::move(n), nullptr, "", std::move(module), vis) {}
+
+  SymbolKind getKind() const noexcept override { return SymbolKind::OverloadSet; }
+
+  bool addOverload(std::shared_ptr<FunctionSymbol> function) {
+    if (!function) {
+      return false;
+    }
+    overloads.push_back(std::move(function));
+    return true;
   }
 };
 

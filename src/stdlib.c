@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <stdint.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -87,6 +88,67 @@ static char *zap_string_to_cstr(zap_string_t s)
         memcpy(out, s.ptr, len);
     out[len] = '\0';
     return out;
+}
+
+static zap_string_t zap_string_from_owned(char *owned)
+{
+    if (!owned)
+    {
+        return (zap_string_t){.ptr = NULL, .len = 0};
+    }
+    return (zap_string_t){.ptr = owned, .len = (long)strlen(owned)};
+}
+
+static zap_string_t zap_string_from_format(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int needed = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+
+    if (needed < 0)
+    {
+        va_end(args);
+        return (zap_string_t){.ptr = NULL, .len = 0};
+    }
+
+    char *buffer = (char *)malloc((size_t)needed + 1);
+    if (!buffer)
+    {
+        va_end(args);
+        return (zap_string_t){.ptr = NULL, .len = 0};
+    }
+
+    vsnprintf(buffer, (size_t)needed + 1, format, args);
+    va_end(args);
+    return zap_string_from_owned(buffer);
+}
+
+zap_string_t zap_to_string_i64(int64_t value)
+{
+    return zap_string_from_format("%lld", (long long)value);
+}
+
+zap_string_t zap_to_string_u64(uint64_t value)
+{
+    return zap_string_from_format("%llu", (unsigned long long)value);
+}
+
+zap_string_t zap_to_string_f64(double value)
+{
+    return zap_string_from_format("%g", value);
+}
+
+long zap_to_int_from_char(char value)
+{
+    return (unsigned char)value;
+}
+
+char zap_to_char_from_int(long value)
+{
+    return (char)value;
 }
 
 static long zap_process_argc = 0;

@@ -1,0 +1,17 @@
+fun mix(x: Int, y: Float) Int {
+    return 1;
+}
+
+fun mix(x: Float, y: Int) Int {
+    return 2;
+}
+
+fun main() Int {
+    if mix(y = 1.0, x = 2) != 1 {
+        return 1;
+    }
+    if mix(y = 3, x = 4.0) != 2 {
+        return 2;
+    }
+    return 0;
+}

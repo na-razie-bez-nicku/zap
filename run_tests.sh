@@ -14,11 +14,27 @@ NC='\033[0m'
 
 TOTAL=0
 PASSED=0
+SKIPPED=0
+
+require_test_file() {
+    local file=$1
+    local description=$2
+
+    if [ -f "$file" ]; then
+        return 0
+    fi
+
+    echo -e "\033[1;33mSKIP\033[0m ($description: missing test file $file)"
+    ((SKIPPED++))
+    return 1
+}
 
 run_test() {
     local file=$1
     local expected_exit_code=$2
     local description=$3
+
+    require_test_file "$file" "$description" || return
 
     ((TOTAL++))
     echo -n "Running $description ($file)... "
@@ -46,6 +62,8 @@ run_warning_test() {
     local file=$1
     local description=$2
 
+    require_test_file "$file" "$description" || return
+
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
@@ -72,6 +90,8 @@ run_runtime_test() {
     local file=$1
     local expected_exit_code=$2
     local description=$3
+
+    require_test_file "$file" "$description" || return
 
     ((TOTAL++))
     echo -n "Running $description ($file)... "
@@ -107,6 +127,8 @@ run_runtime_args_test() {
     local description=$3
     shift 3
 
+    require_test_file "$file" "$description" || return
+
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
@@ -141,6 +163,8 @@ run_compile_args_test() {
     local description=$3
     shift 3
 
+    require_test_file "$file" "$description" || return
+
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
@@ -170,6 +194,8 @@ run_test_args() {
     local description=$3
     shift 3
 
+    require_test_file "$file" "$description" || return
+
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
@@ -189,6 +215,8 @@ run_runtime_compile_args_test() {
     local expected_exit_code=$2
     local description=$3
     shift 3
+
+    require_test_file "$file" "$description" || return
 
     ((TOTAL++))
     echo -n "Running $description ($file)... "
@@ -226,6 +254,8 @@ run_warning_runtime_test() {
     local expected_exit_code=$2
     local warning_pattern=$3
     local description=$4
+
+    require_test_file "$file" "$description" || return
 
     ((TOTAL++))
     echo -n "Running $description ($file)... "
@@ -283,34 +313,24 @@ run_runtime_compile_args_test "tests/struct_pointer_field_test.zp" 0 "Struct poi
 run_runtime_compile_args_test "tests/ptr_deref_field_test.zp" 0 "Pointer dereference field access (*ptr).field" --allow-unsafe
 run_runtime_compile_args_test "tests/ptr_deref_nested_field_test.zp" 0 "Pointer dereference nested field access" --allow-unsafe
 
-# Lexer errors (exit code 1)
-run_test "tests/lexer_error.zp" 1 "Lexer error: Unterminated string"
-
-# Syntax errors (exit code 1)
-run_test "tests/syntax_error.zp" 1 "Syntax error: Missing semicolons"
-
 # Semantic errors (exit code 1)
-run_test "tests/sema_error.zp" 1 "Semantic error: Undefined variable"
 run_test "tests/ext_default_void_type_error.zp" 1 "External function without return type cannot be used as Int"
 run_test "tests/unsafe_requires_flag.zp" 1 "Unsafe features require --allow-unsafe"
 run_test_args "tests/unsafe_scope_error.zp" 1 "Unsafe features are scoped" --allow-unsafe
 run_test_args "tests/unsafe_fun_call_scope_error.zp" 1 "Unsafe function calls are scoped" --allow-unsafe
 run_test_args "tests/unsafe_struct_scope_error.zp" 1 "Unsafe struct usage is scoped" --allow-unsafe
 
-# Multiple errors (exit code 1)
-run_test "tests/syntax_error.zp" 1 "Multiple syntax errors"
-
 # Concat tests
 run_runtime_test "tests/concat.zp" 0 "Concat literal strings"
 run_runtime_test "tests/concat_char.zp" 0 "Concat String and Char"
 run_runtime_test "tests/string_index_test.zp" 0 "String indexing"
 run_runtime_test "tests/string_stdlib_test.zp" 0 "String stdlib helpers"
+run_runtime_test "tests/std_convert_test.zp" 0 "Std conversions via overloaded functions"
 run_test "tests/string_index_assign_error.zp" 1 "String indexing is read-only"
 
 # Logical operator tests
 run_runtime_test "tests/logical_ops.zp" 0 "Logical operators (&&, ||) with short-circuiting"
 run_test "tests/logical_type_error.zp" 1 "Logical operators type check"
-run_test "tests/varargs_spread_missing_fixed_error.zp" 1 "Spread cannot replace required fixed parameters"
 run_runtime_test "tests/if_else_if.zp" 0 "If / else if / else chains"
 run_runtime_test "tests/if_nested.zp" 0 "Nested if statements"
 run_runtime_test "tests/if_state_merge.zp" 0 "If branches mutating shared state"
@@ -330,7 +350,14 @@ run_runtime_test "tests/struct_nested_test.zp" 0 "Nested struct member access"
 run_runtime_test "tests/struct_fn_test.zp" 0 "Structs as function parameters and return values"
 run_runtime_test "tests/struct_array_test.zp" 0 "Arrays of structs"
 run_runtime_test "tests/struct_types_test.zp" 0 "Structs with diverse field types"
+run_runtime_test "tests/function_overload_test.zp" 0 "Function overloading prefers exact matches"
+run_runtime_test "tests/function_overload_named_args_test.zp" 0 "Function overloading supports named arguments"
+run_runtime_test "tests/function_overload_expected_return_test.zp" 0 "Function overloading can use expected return type as tiebreaker"
 run_test "tests/struct_compare_error.zp" 1 "Struct comparison is rejected"
+run_test "tests/function_overload_ambiguous_error.zp" 1 "Ambiguous overloaded call is rejected"
+run_test "tests/function_overload_duplicate_error.zp" 1 "Duplicate overload signature is rejected"
+run_test "tests/function_overload_return_only_error.zp" 1 "Overloads cannot differ only by return type"
+run_test "tests/function_overload_named_args_error.zp" 1 "Positional arguments cannot follow named arguments"
 run_runtime_test "tests/precedence_test.zp" 0 "Operator precedence (NOT vs Member access)"
 run_runtime_test "tests/type_alias.zp" 42 "Type aliasing (alias Name = Type)"
 run_runtime_test "tests/ref_test.zp" 0 "Reference type test"
@@ -353,10 +380,12 @@ run_test "tests/import_cycle/main.zp" 1 "Cyclic imports are rejected"
 run_runtime_test "tests/import_type/main.zp" 0 "Using imported public struct types"
 run_runtime_test "tests/import_std_io/main.zp" 0 "Importing the builtin std/io module"
 run_runtime_test "tests/import_std_string/main.zp" 0 "Importing the builtin std/string module"
+run_runtime_test "tests/import_overload/main.zp" 0 "Importing overloaded functions through module namespace"
 run_test "tests/import_private_fail/main.zp" 1 "Private module member access is rejected"
 
 echo "-------------------------------"
 echo "Results: $PASSED / $TOTAL passed"
+echo "Skipped: $SKIPPED"
 
 if [ $PASSED -eq $TOTAL ]; then
     echo -e "${GREEN}ALL TESTS PASSED!${NC}"

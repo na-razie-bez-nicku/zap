@@ -20,6 +20,29 @@ public:
     return true;
   }
 
+  std::shared_ptr<OverloadSetSymbol> declareFunction(
+      const std::string &name, std::shared_ptr<FunctionSymbol> function) {
+    auto it = symbols_.find(name);
+    if (it == symbols_.end()) {
+      auto set = std::make_shared<OverloadSetSymbol>(name, function ? function->moduleName : "");
+      set->visibility = function ? function->visibility : Visibility::Private;
+      if (function) {
+        set->addOverload(function);
+      }
+      symbols_[name] = set;
+      return set;
+    }
+
+    auto set = std::dynamic_pointer_cast<OverloadSetSymbol>(it->second);
+    if (!set) {
+      return nullptr;
+    }
+    if (function) {
+      set->addOverload(function);
+    }
+    return set;
+  }
+
   std::shared_ptr<Symbol> lookup(const std::string &name) const {
     auto it = symbols_.find(name);
     if (it != symbols_.end()) {

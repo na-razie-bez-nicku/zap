@@ -1,0 +1,8 @@
+fun mix(x: Int, y: Float) Int {
+    return 1;
+}
+
+fun main() Int {
+    mix(x = 1, 2.0);
+    return 0;
+}

@@ -9,6 +9,8 @@
 #include <memory>
 #include <optional>
 #include <stack>
+#include <string_view>
+#include <unordered_map>
 
 namespace sema
 {
@@ -64,6 +66,7 @@ namespace sema
     std::stack<std::unique_ptr<BoundExpression>> expressionStack_;
     std::stack<std::unique_ptr<BoundStatement>> statementStack_;
     std::unique_ptr<BoundBlock> currentBlock_;
+    std::vector<std::shared_ptr<zir::Type>> expectedExpressionTypes_;
 
     int loopDepth_ = 0;
     int unsafeDepth_ = 0;
@@ -83,6 +86,7 @@ namespace sema
       std::shared_ptr<ModuleSymbol> symbol;
     };
     std::map<std::string, ModuleState> modules_;
+    std::unordered_map<const Node *, std::shared_ptr<FunctionSymbol>> declaredFunctionSymbols_;
 
     std::shared_ptr<zir::Type> mapType(const TypeNode &typeNode);
     std::shared_ptr<Symbol> resolveQualifiedSymbol(const std::vector<std::string> &parts,
@@ -96,8 +100,24 @@ namespace sema
     std::unique_ptr<BoundExpression> wrapInCast(std::unique_ptr<BoundExpression> expr, std::shared_ptr<zir::Type> targetType);
     void error(SourceSpan span, const std::string &message);
     std::string mangleName(const std::string &modulePath, const std::string &name) const;
+    std::string mangleFunctionName(const std::string &modulePath,
+                                   const FunctionSymbol &function) const;
     std::string currentModuleLinkPath() const;
     std::string displayTypeName(const std::string &moduleName, const std::string &name) const;
+    std::string functionSignatureKey(const FunctionSymbol &function) const;
+    std::string renderFunctionSignature(const FunctionSymbol &function) const;
+    std::shared_ptr<FunctionSymbol> findFunctionBySignature(
+        const std::shared_ptr<Symbol> &symbol, const FunctionSymbol &prototype) const;
+    std::unique_ptr<BoundExpression> bindExpressionWithExpected(
+        ExpressionNode *expr, std::shared_ptr<zir::Type> expectedType);
+    std::shared_ptr<zir::Type> currentExpectedExpressionType() const;
+    int conversionCost(std::shared_ptr<zir::Type> from,
+                       std::shared_ptr<zir::Type> to) const;
+    bool isSignedIntegerType(std::shared_ptr<zir::Type> type) const;
+    bool isUnsignedIntegerType(std::shared_ptr<zir::Type> type) const;
+    int typeBitWidth(std::shared_ptr<zir::Type> type) const;
+    std::string describeConversion(std::shared_ptr<zir::Type> from,
+                                   std::shared_ptr<zir::Type> to) const;
     std::unique_ptr<BoundBlock> bindBody(BodyNode *body, bool createScope);
     void initializeBuiltins();
     void predeclareModuleTypes(ModuleState &module);
@@ -106,14 +126,14 @@ namespace sema
     void applyImports(ModuleState &module, bool allowIncomplete = false);
     std::shared_ptr<Symbol> lookupVisibleSymbol(const std::string &name) const;
 
-    bool isNumeric(std::shared_ptr<zir::Type> type);
+    bool isNumeric(std::shared_ptr<zir::Type> type) const;
     bool isPointerType(std::shared_ptr<zir::Type> type) const;
     bool isNullType(std::shared_ptr<zir::Type> type) const;
     bool isUnsafeActive() const;
     void requireUnsafeEnabled(SourceSpan span, const std::string &feature);
     void requireUnsafeContext(SourceSpan span, const std::string &feature);
     bool canConvert(std::shared_ptr<zir::Type> from,
-                    std::shared_ptr<zir::Type> to);
+                    std::shared_ptr<zir::Type> to) const;
     std::shared_ptr<zir::Type> getPromotedType(std::shared_ptr<zir::Type> t1,
                                                std::shared_ptr<zir::Type> t2);
     std::shared_ptr<zir::Type> getCVariadicArgumentType(

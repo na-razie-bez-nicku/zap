@@ -1,0 +1,12 @@
+fun choose(x: Int64) Int {
+    return 1;
+}
+
+fun choose(x: UInt) Int {
+    return 2;
+}
+
+fun main() Int {
+    choose(1.5);
+    return 0;
+}

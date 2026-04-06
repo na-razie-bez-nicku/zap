@@ -89,6 +89,50 @@ namespace sema
 
       return false;
     }
+
+    std::vector<std::shared_ptr<FunctionSymbol>>
+    collectOverloads(const std::shared_ptr<Symbol> &symbol)
+    {
+      if (!symbol)
+      {
+        return {};
+      }
+      if (auto function = std::dynamic_pointer_cast<FunctionSymbol>(symbol))
+      {
+        return {function};
+      }
+      if (auto set = std::dynamic_pointer_cast<OverloadSetSymbol>(symbol))
+      {
+        return set->overloads;
+      }
+      return {};
+    }
+
+    bool sameFunctionSignature(const FunctionSymbol &lhs,
+                               const FunctionSymbol &rhs)
+    {
+      if (lhs.parameters.size() != rhs.parameters.size() ||
+          lhs.isCVariadic != rhs.isCVariadic)
+      {
+        return false;
+      }
+      for (size_t i = 0; i < lhs.parameters.size(); ++i)
+      {
+        const auto &left = lhs.parameters[i];
+        const auto &right = rhs.parameters[i];
+        if (left->is_ref != right->is_ref ||
+            left->is_variadic_pack != right->is_variadic_pack)
+        {
+          return false;
+        }
+        if (!left->type || !right->type ||
+            left->type->toString() != right->type->toString())
+        {
+          return false;
+        }
+      }
+      return true;
+    }
   } // namespace
 
   Binder::Binder(zap::DiagnosticEngine &diag, bool allowUnsafe)
@@ -110,6 +154,7 @@ namespace sema
     currentScope_.reset();
     currentFunction_.reset();
     currentModuleId_.clear();
+    declaredFunctionSymbols_.clear();
     unsafeDepth_ = 0;
     unsafeTypeContextDepth_ = 0;
     externTypeContextDepth_ = 0;
@@ -249,6 +294,284 @@ namespace sema
     }
     mangled += name;
     return mangled;
+  }
+
+  std::string Binder::functionSignatureKey(const FunctionSymbol &function) const
+  {
+    std::string key;
+    for (const auto &param : function.parameters)
+    {
+      if (!key.empty())
+      {
+        key += "|";
+      }
+      if (param->is_ref)
+      {
+        key += "ref:";
+      }
+      if (param->is_variadic_pack)
+      {
+        key += "varargs:";
+      }
+      key += param->type ? param->type->toString() : "Void";
+    }
+    if (function.isCVariadic)
+    {
+      if (!key.empty())
+      {
+        key += "|";
+      }
+      key += "cvarargs";
+    }
+    return key;
+  }
+
+  std::string Binder::renderFunctionSignature(const FunctionSymbol &function) const
+  {
+    std::string rendered = function.name + "(";
+    for (size_t i = 0; i < function.parameters.size(); ++i)
+    {
+      if (i != 0)
+      {
+        rendered += ", ";
+      }
+      const auto &param = function.parameters[i];
+      if (param->is_ref)
+      {
+        rendered += "ref ";
+      }
+      if (param->is_variadic_pack)
+      {
+        rendered += "...";
+        rendered += param->variadic_element_type
+                        ? param->variadic_element_type->toString()
+                        : (param->type ? param->type->toString() : "Void");
+      }
+      else
+      {
+        rendered += param->type ? param->type->toString() : "Void";
+      }
+    }
+    if (function.isCVariadic)
+    {
+      if (!function.parameters.empty())
+      {
+        rendered += ", ";
+      }
+      rendered += "...";
+    }
+    rendered += ")";
+    return rendered;
+  }
+
+  std::string Binder::mangleFunctionName(const std::string &modulePath,
+                                         const FunctionSymbol &function) const
+  {
+    return mangleName(modulePath, function.name + "$" +
+                                      sanitizeTypeName(functionSignatureKey(function)));
+  }
+
+  std::shared_ptr<FunctionSymbol> Binder::findFunctionBySignature(
+      const std::shared_ptr<Symbol> &symbol,
+      const FunctionSymbol &prototype) const
+  {
+    for (const auto &candidate : collectOverloads(symbol))
+    {
+      if (candidate && sameFunctionSignature(*candidate, prototype))
+      {
+        return candidate;
+      }
+    }
+    return nullptr;
+  }
+
+  std::unique_ptr<BoundExpression> Binder::bindExpressionWithExpected(
+      ExpressionNode *expr, std::shared_ptr<zir::Type> expectedType)
+  {
+    if (!expr)
+    {
+      return nullptr;
+    }
+
+    expectedExpressionTypes_.push_back(std::move(expectedType));
+    expr->accept(*this);
+    expectedExpressionTypes_.pop_back();
+
+    if (expressionStack_.empty())
+    {
+      return nullptr;
+    }
+
+    auto boundExpr = std::move(expressionStack_.top());
+    expressionStack_.pop();
+    return boundExpr;
+  }
+
+  std::shared_ptr<zir::Type> Binder::currentExpectedExpressionType() const
+  {
+    if (expectedExpressionTypes_.empty())
+    {
+      return nullptr;
+    }
+    return expectedExpressionTypes_.back();
+  }
+
+  bool Binder::isSignedIntegerType(std::shared_ptr<zir::Type> type) const
+  {
+    if (!type)
+    {
+      return false;
+    }
+
+    switch (type->getKind())
+    {
+    case zir::TypeKind::Int8:
+    case zir::TypeKind::Int16:
+    case zir::TypeKind::Int32:
+    case zir::TypeKind::Int64:
+    case zir::TypeKind::Int:
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  bool Binder::isUnsignedIntegerType(std::shared_ptr<zir::Type> type) const
+  {
+    return type && type->isInteger() && type->isUnsigned();
+  }
+
+  int Binder::typeBitWidth(std::shared_ptr<zir::Type> type) const
+  {
+    if (!type)
+    {
+      return 0;
+    }
+
+    switch (type->getKind())
+    {
+    case zir::TypeKind::Bool:
+      return 1;
+    case zir::TypeKind::Char:
+    case zir::TypeKind::Int8:
+    case zir::TypeKind::UInt8:
+      return 8;
+    case zir::TypeKind::Int16:
+    case zir::TypeKind::UInt16:
+      return 16;
+    case zir::TypeKind::Int32:
+    case zir::TypeKind::UInt32:
+    case zir::TypeKind::Int:
+    case zir::TypeKind::UInt:
+    case zir::TypeKind::Float:
+    case zir::TypeKind::Float32:
+      return 32;
+    case zir::TypeKind::Int64:
+    case zir::TypeKind::UInt64:
+    case zir::TypeKind::Float64:
+      return 64;
+    default:
+      return 0;
+    }
+  }
+
+  int Binder::conversionCost(std::shared_ptr<zir::Type> from,
+                             std::shared_ptr<zir::Type> to) const
+  {
+    if (!from || !to)
+    {
+      return 1000;
+    }
+    if (from->toString() == to->toString())
+    {
+      return 0;
+    }
+    if (isNullType(from) && isPointerType(to))
+    {
+      return 3;
+    }
+    if (!canConvert(from, to))
+    {
+      return 1000;
+    }
+
+    if (from->isFloatingPoint() && to->isFloatingPoint())
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? 1 : 5;
+    }
+
+    if (isSignedIntegerType(from) && isSignedIntegerType(to))
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? 1 : 4;
+    }
+
+    if (isUnsignedIntegerType(from) && isUnsignedIntegerType(to))
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? 1 : 4;
+    }
+
+    if (from->isInteger() && to->isFloatingPoint())
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? 2 : 5;
+    }
+
+    if (from->isFloatingPoint() && to->isInteger())
+    {
+      return 6;
+    }
+
+    if (from->isInteger() && to->isInteger())
+    {
+      return 5;
+    }
+
+    return 7;
+  }
+
+  std::string Binder::describeConversion(std::shared_ptr<zir::Type> from,
+                                         std::shared_ptr<zir::Type> to) const
+  {
+    if (!from || !to)
+    {
+      return "invalid conversion";
+    }
+    int cost = conversionCost(from, to);
+    if (cost == 0)
+    {
+      return "exact match";
+    }
+    if (isNullType(from) && isPointerType(to))
+    {
+      return "null-to-pointer conversion";
+    }
+    if (from->isFloatingPoint() && to->isFloatingPoint())
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? "floating widening"
+                                                    : "floating narrowing";
+    }
+    if (isSignedIntegerType(from) && isSignedIntegerType(to))
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? "signed widening"
+                                                    : "signed narrowing";
+    }
+    if (isUnsignedIntegerType(from) && isUnsignedIntegerType(to))
+    {
+      return typeBitWidth(to) >= typeBitWidth(from) ? "unsigned widening"
+                                                    : "unsigned narrowing";
+    }
+    if (from->isInteger() && to->isFloatingPoint())
+    {
+      return "integer-to-float conversion";
+    }
+    if (from->isFloatingPoint() && to->isInteger())
+    {
+      return "float-to-integer conversion";
+    }
+    if (from->isInteger() && to->isInteger())
+    {
+      return "signedness-changing integer conversion";
+    }
+    return cost >= 1000 ? "not convertible" : "implicit conversion";
   }
 
   std::string Binder::displayTypeName(const std::string &moduleName,
@@ -591,22 +914,63 @@ namespace sema
         auto linkName =
             (funDecl->name_ == "main" && module.info->isEntry)
                 ? std::string("main")
-                : mangleName(module.info->linkPath.empty() ? module.info->moduleId
-                                                           : module.info->linkPath,
-                             funDecl->name_);
+                : std::string();
         auto symbol = std::make_shared<FunctionSymbol>(
-            funDecl->name_, std::move(params), std::move(retType), linkName,
+            funDecl->name_, std::move(params), std::move(retType), "",
             module.info->moduleName, funDecl->visibility_, funDecl->isUnsafe_);
+        if (linkName != "main")
+        {
+          symbol->linkName = mangleFunctionName(
+              module.info->linkPath.empty() ? module.info->moduleId
+                                            : module.info->linkPath,
+              *symbol);
+        }
+        else
+        {
+          symbol->linkName = linkName;
+        }
 
-        if (!module.scope->declare(funDecl->name_, symbol))
+        auto existing = module.scope->lookupLocal(funDecl->name_);
+        if (findFunctionBySignature(existing, *symbol))
         {
           error(funDecl->span,
                 "Function '" + funDecl->name_ + "' already declared.");
+          continue;
         }
-        module.symbol->members[funDecl->name_] = symbol;
+        auto overloads = module.scope->declareFunction(funDecl->name_, symbol);
+        if (!overloads)
+        {
+          error(funDecl->span,
+                "Function '" + funDecl->name_ +
+                    "' conflicts with an existing declaration.");
+          continue;
+        }
+        declaredFunctionSymbols_[funDecl] = symbol;
+        module.symbol->members[funDecl->name_] = overloads;
         if (funDecl->visibility_ == Visibility::Public)
         {
-          module.symbol->exports[funDecl->name_] = symbol;
+          auto exportIt = module.symbol->exports.find(funDecl->name_);
+          std::shared_ptr<OverloadSetSymbol> exportSet;
+          if (exportIt == module.symbol->exports.end())
+          {
+            exportSet = std::make_shared<OverloadSetSymbol>(
+                funDecl->name_, module.info->moduleName, Visibility::Public);
+            module.symbol->exports[funDecl->name_] = exportSet;
+          }
+          else
+          {
+            exportSet = std::dynamic_pointer_cast<OverloadSetSymbol>(exportIt->second);
+          }
+          if (!exportSet)
+          {
+            error(funDecl->span,
+                  "Function '" + funDecl->name_ +
+                      "' conflicts with an exported declaration.");
+          }
+          else
+          {
+            exportSet->addOverload(symbol);
+          }
         }
       }
       else if (auto extDecl = dynamic_cast<ExtDecl *>(child.get()))
@@ -674,16 +1038,47 @@ namespace sema
             extDecl->name_, std::move(params), std::move(retType), linkName,
             module.info->moduleName, extDecl->visibility_, false,
             extDecl->isCVariadic_);
-
-        if (!module.scope->declare(extDecl->name_, symbol))
+        auto existing = module.scope->lookupLocal(extDecl->name_);
+        if (findFunctionBySignature(existing, *symbol))
         {
           error(extDecl->span,
                 "External function '" + extDecl->name_ + "' already declared.");
+          continue;
         }
-        module.symbol->members[extDecl->name_] = symbol;
+        auto overloads = module.scope->declareFunction(extDecl->name_, symbol);
+        if (!overloads)
+        {
+          error(extDecl->span,
+                "External function '" + extDecl->name_ +
+                    "' conflicts with an existing declaration.");
+          continue;
+        }
+        declaredFunctionSymbols_[extDecl] = symbol;
+        module.symbol->members[extDecl->name_] = overloads;
         if (extDecl->visibility_ == Visibility::Public)
         {
-          module.symbol->exports[extDecl->name_] = symbol;
+          auto exportIt = module.symbol->exports.find(extDecl->name_);
+          std::shared_ptr<OverloadSetSymbol> exportSet;
+          if (exportIt == module.symbol->exports.end())
+          {
+            exportSet = std::make_shared<OverloadSetSymbol>(
+                extDecl->name_, module.info->moduleName, Visibility::Public);
+            module.symbol->exports[extDecl->name_] = exportSet;
+          }
+          else
+          {
+            exportSet = std::dynamic_pointer_cast<OverloadSetSymbol>(exportIt->second);
+          }
+          if (!exportSet)
+          {
+            error(extDecl->span,
+                  "External function '" + extDecl->name_ +
+                      "' conflicts with an exported declaration.");
+          }
+          else
+          {
+            exportSet->addOverload(symbol);
+          }
         }
       }
       else if (auto varDecl = dynamic_cast<VarDecl *>(child.get()))
@@ -757,21 +1152,21 @@ namespace sema
       return nullptr;
     }
 
+    auto exportedIt = moduleSym->exports.find(memberName);
+    if (exportedIt != moduleSym->exports.end())
+    {
+      return exportedIt->second;
+    }
+
     auto memberIt = moduleSym->members.find(memberName);
     if (memberIt == moduleSym->members.end())
     {
       error(span, "Module '" + moduleName + "' has no member '" + memberName + "'.");
       return nullptr;
     }
-
-    if (memberIt->second->visibility != Visibility::Public)
-    {
-      error(span, "Member '" + memberName + "' of module '" + moduleName +
-                      "' is private.");
-      return nullptr;
-    }
-
-    return memberIt->second;
+    error(span, "Member '" + memberName + "' of module '" + moduleName +
+                    "' is private.");
+    return nullptr;
   }
 
   std::shared_ptr<Symbol>
@@ -792,7 +1187,10 @@ namespace sema
         error(span, "Undefined identifier: " + parts.front());
         return nullptr;
       }
-      if (!allowAnyKind && symbol->getKind() != expectedKind)
+      if (!allowAnyKind &&
+          symbol->getKind() != expectedKind &&
+          !(expectedKind == SymbolKind::Function &&
+            symbol->getKind() == SymbolKind::OverloadSet))
       {
         return nullptr;
       }
@@ -810,7 +1208,10 @@ namespace sema
     {
       return nullptr;
     }
-    if (!allowAnyKind && symbol->getKind() != expectedKind)
+    if (!allowAnyKind &&
+        symbol->getKind() != expectedKind &&
+        !(expectedKind == SymbolKind::Function &&
+          symbol->getKind() == SymbolKind::OverloadSet))
     {
       return nullptr;
     }
@@ -833,12 +1234,11 @@ namespace sema
 
   void Binder::visit(FunDecl &node)
   {
-    auto symbol = std::dynamic_pointer_cast<FunctionSymbol>(
-        currentScope_->lookup(node.name_));
+    auto symbolIt = declaredFunctionSymbols_.find(&node);
+    auto symbol = symbolIt == declaredFunctionSymbols_.end() ? nullptr
+                                                             : symbolIt->second;
     if (!symbol)
     {
-      error(node.span,
-            "Internal error: Function symbol not found for " + node.name_);
       return;
     }
 
@@ -918,13 +1318,11 @@ namespace sema
 
   void Binder::visit(ExtDecl &node)
   {
-    auto symbol = std::dynamic_pointer_cast<FunctionSymbol>(
-        currentScope_->lookup(node.name_));
+    auto symbolIt = declaredFunctionSymbols_.find(&node);
+    auto symbol = symbolIt == declaredFunctionSymbols_.end() ? nullptr
+                                                             : symbolIt->second;
     if (!symbol)
     {
-      error(node.span,
-            "Internal error: External function symbol not found for " +
-                node.name_);
       return;
     }
 
@@ -1041,12 +1439,9 @@ namespace sema
     std::unique_ptr<BoundExpression> initializer = nullptr;
     if (node.initializer_)
     {
-      node.initializer_->accept(*this);
-      if (!expressionStack_.empty())
+      initializer = bindExpressionWithExpected(node.initializer_.get(), type);
+      if (initializer)
       {
-        initializer = std::move(expressionStack_.top());
-        expressionStack_.pop();
-
         if (!canConvert(initializer->type, type))
         {
           error(node.initializer_->span,
@@ -1106,12 +1501,9 @@ namespace sema
     std::unique_ptr<BoundExpression> initializer = nullptr;
     if (node.initializer_)
     {
-      node.initializer_->accept(*this);
-      if (!expressionStack_.empty())
+      initializer = bindExpressionWithExpected(node.initializer_.get(), type);
+      if (initializer)
       {
-        initializer = std::move(expressionStack_.top());
-        expressionStack_.pop();
-
         if (!canConvert(initializer->type, type))
         {
           error(node.initializer_->span,
@@ -1166,12 +1558,9 @@ namespace sema
     std::unique_ptr<BoundExpression> expr = nullptr;
     if (node.returnValue)
     {
-      node.returnValue->accept(*this);
-      if (!expressionStack_.empty())
-      {
-        expr = std::move(expressionStack_.top());
-        expressionStack_.pop();
-      }
+      expr = bindExpressionWithExpected(
+          node.returnValue.get(),
+          currentFunction_ ? currentFunction_->returnType : nullptr);
     }
 
     if (currentFunction_)
@@ -1527,11 +1916,9 @@ namespace sema
       }
     }
 
-    node.expr_->accept(*this);
-    if (expressionStack_.empty())
+    auto expr = bindExpressionWithExpected(node.expr_.get(), target->type);
+    if (!expr)
       return;
-    auto expr = std::move(expressionStack_.top());
-    expressionStack_.pop();
 
     if (!canConvert(expr->type, target->type))
     {
@@ -1699,42 +2086,18 @@ namespace sema
       return;
     }
 
-    auto funcSymbol = std::dynamic_pointer_cast<FunctionSymbol>(symbol);
-    if (!funcSymbol)
+    auto candidates = collectOverloads(symbol);
+    if (candidates.empty())
     {
       error(node.span, "'" + calleeParts.back() + "' is not a function.");
       return;
     }
 
-    if (funcSymbol->isUnsafe)
-    {
-      requireUnsafeEnabled(node.span, "unsafe function calls");
-      requireUnsafeContext(node.span, "unsafe function calls");
-    }
-
-    size_t fixedParamCount = funcSymbol->fixedParameterCount();
-    if (!funcSymbol->acceptsExtraArguments() &&
-        node.params_.size() != funcSymbol->parameters.size())
-    {
-      error(node.callee_->span, "Function '" + funcSymbol->name + "' expects " +
-                                    std::to_string(funcSymbol->parameters.size()) +
-                                    " arguments, but received " +
-                                    std::to_string(node.params_.size()));
-    }
-    if (funcSymbol->acceptsExtraArguments() && node.params_.size() < fixedParamCount)
-    {
-      error(node.callee_->span, "Function '" + funcSymbol->name + "' expects at least " +
-                                    std::to_string(fixedParamCount) +
-                                    " arguments, but received " +
-                                    std::to_string(node.params_.size()));
-    }
-
-    std::vector<std::unique_ptr<BoundExpression>> boundArgs;
-    std::vector<bool> argIsRefList;
-    std::unique_ptr<BoundExpression> variadicPack = nullptr;
     bool seenSpreadArg = false;
-    auto variadicParam = funcSymbol->variadicParameter();
-
+    std::vector<std::unique_ptr<BoundExpression>> rawArgs;
+    std::vector<bool> rawArgIsRef;
+    std::vector<bool> rawArgIsSpread;
+    std::vector<std::string> rawArgNames;
     for (size_t i = 0; i < node.params_.size(); ++i)
     {
       if (seenSpreadArg)
@@ -1744,139 +2107,471 @@ namespace sema
         return;
       }
 
-      node.params_[i]->value->accept(*this);
-      if (expressionStack_.empty())
+      auto arg = bindExpressionWithExpected(node.params_[i]->value.get(), nullptr);
+      if (!arg)
         return;
-
-      auto arg = std::move(expressionStack_.top());
-      expressionStack_.pop();
-      bool argIsRef = node.params_[i]->isRef;
-      bool argIsSpread = node.params_[i]->isSpread;
-
-      if (argIsSpread)
+      rawArgNames.push_back(node.params_[i]->name);
+      rawArgIsRef.push_back(node.params_[i]->isRef);
+      rawArgIsSpread.push_back(node.params_[i]->isSpread);
+      if (node.params_[i]->isSpread)
       {
-        if (i < fixedParamCount)
-        {
-          error(node.params_[i]->value->span,
-                "Spread argument cannot be used in place of required positional parameters.");
-          return;
-        }
-        if (argIsRef)
-        {
-          error(node.params_[i]->value->span,
-                "Spread arguments cannot be passed by 'ref'.");
-        }
-        if (!funcSymbol->hasVariadicParameter())
-        {
-          error(node.params_[i]->value->span,
-                "Spread arguments can only be used when calling a variadic function.");
-        }
-
-        auto *varExpr = dynamic_cast<BoundVariableExpression *>(arg.get());
-        if (!varExpr || !varExpr->symbol->is_variadic_pack)
-        {
-          error(node.params_[i]->value->span,
-                "Spread arguments must reference a variadic parameter.");
-        }
-        else if (!variadicParam ||
-                 varExpr->symbol->variadic_element_type->toString() !=
-                     variadicParam->variadic_element_type->toString())
-        {
-          error(node.params_[i]->value->span,
-                "Spread argument element type does not match the variadic parameter type.");
-        }
-
-        variadicPack = std::move(arg);
         seenSpreadArg = true;
+      }
+      rawArgs.push_back(std::move(arg));
+    }
+
+    struct CandidateMatch
+    {
+      std::shared_ptr<FunctionSymbol> symbol;
+      std::vector<std::unique_ptr<BoundExpression>> arguments;
+      std::vector<bool> argumentIsRef;
+      std::unique_ptr<BoundExpression> variadicPack;
+      std::vector<int> cost;
+      bool usedExtraArguments = false;
+      int returnCost = 0;
+      std::vector<std::string> notes;
+    };
+
+    auto compareCost = [](const CandidateMatch &lhs, const CandidateMatch &rhs) {
+      if (lhs.cost != rhs.cost)
+      {
+        return lhs.cost < rhs.cost;
+      }
+      if (lhs.returnCost != rhs.returnCost)
+      {
+        return lhs.returnCost < rhs.returnCost;
+      }
+      if (lhs.usedExtraArguments != rhs.usedExtraArguments)
+      {
+        return !lhs.usedExtraArguments && rhs.usedExtraArguments;
+      }
+      if (lhs.symbol->acceptsExtraArguments() != rhs.symbol->acceptsExtraArguments())
+      {
+        return !lhs.symbol->acceptsExtraArguments() &&
+               rhs.symbol->acceptsExtraArguments();
+      }
+      return false;
+    };
+
+    std::vector<CandidateMatch> matches;
+    std::shared_ptr<FunctionSymbol> blockedUnsafeMatch = nullptr;
+    std::vector<std::string> rejectionNotes;
+    auto expectedReturnType = currentExpectedExpressionType();
+
+    for (const auto &funcSymbol : candidates)
+    {
+      if (!funcSymbol)
+      {
         continue;
       }
 
-      argIsRefList.push_back(argIsRef);
-      if (i < fixedParamCount)
+      size_t fixedParamCount = funcSymbol->fixedParameterCount();
+      if (!funcSymbol->acceptsExtraArguments() &&
+          node.params_.size() != funcSymbol->parameters.size())
       {
-        auto expectedType = funcSymbol->parameters[i]->type;
-        if (argIsRef != funcSymbol->parameters[i]->is_ref)
+        rejectionNotes.push_back("'" + renderFunctionSignature(*funcSymbol) +
+                                 "': wrong argument count");
+        continue;
+      }
+      if (funcSymbol->acceptsExtraArguments() &&
+          node.params_.size() < fixedParamCount)
+      {
+        rejectionNotes.push_back("'" + renderFunctionSignature(*funcSymbol) +
+                                 "': too few arguments");
+        continue;
+      }
+
+      CandidateMatch match;
+      match.symbol = funcSymbol;
+      match.arguments.resize(fixedParamCount);
+      match.argumentIsRef.resize(fixedParamCount, false);
+      bool failed = false;
+      std::string failureReason;
+      auto variadicParam = funcSymbol->variadicParameter();
+      std::vector<int> positionalToParameter(rawArgs.size(), -1);
+      std::vector<bool> parameterAssigned(funcSymbol->parameters.size(), false);
+      bool seenNamedArgument = false;
+
+      for (size_t i = 0, positionalIndex = 0; i < rawArgs.size(); ++i)
+      {
+        const bool isSpread = rawArgIsSpread[i];
+        const bool isNamed = !rawArgNames[i].empty();
+
+        if (isSpread)
         {
-          error(node.params_[i]->value->span,
-                "Argument " + std::to_string(i + 1) +
-                    " ref-ness does not match parameter.");
+          if (isNamed)
+          {
+            failed = true;
+            failureReason = "named spread arguments are not supported";
+            break;
+          }
+          positionalToParameter[i] = static_cast<int>(fixedParamCount);
+          continue;
         }
 
-        if (argIsRef)
+        if (isNamed)
         {
-          auto varExpr = dynamic_cast<BoundVariableExpression *>(arg.get());
-          if (!varExpr)
+          seenNamedArgument = true;
+          bool found = false;
+          for (size_t paramIndex = 0; paramIndex < fixedParamCount; ++paramIndex)
           {
-            error(node.params_[i]->value->span,
-                  "Arguments passed by 'ref' must be variables.");
+            if (funcSymbol->parameters[paramIndex]->name != rawArgNames[i])
+            {
+              continue;
+            }
+            if (parameterAssigned[paramIndex])
+            {
+              failed = true;
+              failureReason = "parameter '" + rawArgNames[i] + "' provided more than once";
+              break;
+            }
+            positionalToParameter[i] = static_cast<int>(paramIndex);
+            parameterAssigned[paramIndex] = true;
+            found = true;
+            break;
           }
-          else if (arg->type->toString() != expectedType->toString())
+          if (failed)
           {
-            error(node.params_[i]->value->span,
-                  "Argument " + std::to_string(i + 1) +
-                      " passed by 'ref' must match the parameter type exactly. Expected '" +
-                      expectedType->toString() + "', but got '" +
-                      arg->type->toString() + "'.");
+            break;
           }
+          if (!found)
+          {
+            failed = true;
+            failureReason =
+                "unknown named argument '" + rawArgNames[i] + "'";
+            break;
+          }
+          continue;
         }
-        else if (!canConvert(arg->type, expectedType))
+
+        if (seenNamedArgument)
         {
-          error(node.params_[i]->value->span,
-                "Argument " + std::to_string(i + 1) + " expects type '" +
-                    expectedType->toString() + "', but received type '" +
-                    arg->type->toString() + "'");
+          failed = true;
+          failureReason = "positional arguments cannot follow named arguments";
+          break;
+        }
+
+        while (positionalIndex < fixedParamCount &&
+               parameterAssigned[positionalIndex])
+        {
+          ++positionalIndex;
+        }
+
+        if (positionalIndex < fixedParamCount)
+        {
+          positionalToParameter[i] = static_cast<int>(positionalIndex);
+          parameterAssigned[positionalIndex] = true;
+          ++positionalIndex;
         }
         else
         {
-          arg = wrapInCast(std::move(arg), expectedType);
+          positionalToParameter[i] = static_cast<int>(fixedParamCount);
         }
       }
-      else if (funcSymbol->hasVariadicParameter())
+
+      if (!failed)
       {
-        if (argIsRef)
+        for (size_t paramIndex = 0; paramIndex < fixedParamCount; ++paramIndex)
         {
-          error(node.params_[i]->value->span,
-                "Variadic arguments cannot be passed by 'ref'.");
-        }
-        auto expectedType = variadicParam->variadic_element_type;
-        if (!canConvert(arg->type, expectedType))
-        {
-          error(node.params_[i]->value->span,
-                "Variadic argument " + std::to_string(i + 1) + " expects type '" +
-                    expectedType->toString() + "', but received type '" +
-                    arg->type->toString() + "'");
-        }
-        else
-        {
-          arg = wrapInCast(std::move(arg), expectedType);
+          if (!parameterAssigned[paramIndex])
+          {
+            failed = true;
+            failureReason = "missing argument for parameter '" +
+                            funcSymbol->parameters[paramIndex]->name + "'";
+            break;
+          }
         }
       }
-      else if (funcSymbol->isCVariadic)
+
+      for (size_t i = 0; i < rawArgs.size(); ++i)
       {
-        if (argIsRef)
+        auto arg = rawArgs[i]->clone();
+        bool argIsRef = rawArgIsRef[i];
+        bool argIsSpread = rawArgIsSpread[i];
+        int parameterIndex = positionalToParameter[i];
+
+        if (failed)
         {
-          error(node.params_[i]->value->span,
-                "C variadic arguments cannot be passed by 'ref'.");
+          break;
         }
-        auto promotedType = getCVariadicArgumentType(arg->type);
-        if (!promotedType)
+
+        if (argIsSpread)
         {
-          error(node.params_[i]->value->span,
-                "Type '" + arg->type->toString() +
-                    "' is not supported in C variadic arguments.");
+          if (parameterIndex < static_cast<int>(fixedParamCount) || argIsRef ||
+              !funcSymbol->hasVariadicParameter())
+          {
+            failed = true;
+            failureReason =
+                "spread arguments can only target a Zap variadic parameter";
+            break;
+          }
+
+          auto *varExpr = dynamic_cast<BoundVariableExpression *>(arg.get());
+          if (!varExpr || !varExpr->symbol->is_variadic_pack || !variadicParam ||
+              !varExpr->symbol->variadic_element_type ||
+              varExpr->symbol->variadic_element_type->toString() !=
+                  variadicParam->variadic_element_type->toString())
+          {
+            failed = true;
+            failureReason =
+                "spread argument type does not match variadic parameter";
+            break;
+          }
+
+          match.variadicPack = std::move(arg);
+          match.usedExtraArguments = true;
+          match.notes.push_back("spread -> variadic pack");
+          continue;
         }
-        else
+
+        if (parameterIndex >= 0 && parameterIndex < static_cast<int>(fixedParamCount))
         {
+          auto expectedType = funcSymbol->parameters[parameterIndex]->type;
+          const auto &parameter = funcSymbol->parameters[parameterIndex];
+          if (argIsRef != parameter->is_ref)
+          {
+            failed = true;
+            failureReason = "argument for parameter '" + parameter->name +
+                            "' has mismatched ref-ness";
+            break;
+          }
+
+          if (argIsRef)
+          {
+            auto varExpr = dynamic_cast<BoundVariableExpression *>(arg.get());
+            if (!varExpr || arg->type->toString() != expectedType->toString())
+            {
+              failed = true;
+              failureReason = "ref argument for parameter '" + parameter->name +
+                              "' must exactly match type '" +
+                              expectedType->toString() + "'";
+              break;
+            }
+            match.cost.push_back(0);
+            match.notes.push_back("param " + parameter->name + ": exact ref match");
+          }
+          else if (!canConvert(arg->type, expectedType))
+          {
+            failed = true;
+            failureReason = "argument for parameter '" + parameter->name +
+                            "' is not convertible from '" +
+                            arg->type->toString() + "' to '" +
+                            expectedType->toString() + "'";
+            break;
+          }
+          else
+          {
+            int cost = conversionCost(arg->type, expectedType);
+            if (cost >= 1000)
+            {
+              failed = true;
+              failureReason = "argument for parameter '" + parameter->name +
+                              "' is not convertible from '" +
+                              arg->type->toString() + "' to '" +
+                              expectedType->toString() + "'";
+              break;
+            }
+            match.cost.push_back(cost);
+            match.notes.push_back("param " + parameter->name + ": " +
+                                  describeConversion(arg->type, expectedType));
+            arg = wrapInCast(std::move(arg), expectedType);
+          }
+          match.argumentIsRef[parameterIndex] = argIsRef;
+          match.arguments[parameterIndex] = std::move(arg);
+        }
+        else if (funcSymbol->hasVariadicParameter())
+        {
+          if (argIsRef)
+          {
+            failed = true;
+            failureReason = "variadic arguments cannot be passed by ref";
+            break;
+          }
+          auto expectedType = variadicParam->variadic_element_type;
+          if (!canConvert(arg->type, expectedType))
+          {
+            failed = true;
+            failureReason = "variadic argument is not convertible from '" +
+                            arg->type->toString() + "' to '" +
+                            expectedType->toString() + "'";
+            break;
+          }
+          int cost = conversionCost(arg->type, expectedType);
+          match.cost.push_back(cost);
+          match.usedExtraArguments = true;
+          match.notes.push_back("variadic: " +
+                                describeConversion(arg->type, expectedType));
+          arg = wrapInCast(std::move(arg), expectedType);
+          match.argumentIsRef.push_back(false);
+          match.arguments.push_back(std::move(arg));
+        }
+        else if (funcSymbol->isCVariadic)
+        {
+          if (argIsRef)
+          {
+            failed = true;
+            failureReason = "C variadic arguments cannot be passed by ref";
+            break;
+          }
+          auto promotedType = getCVariadicArgumentType(arg->type);
+          if (!promotedType)
+          {
+            failed = true;
+            failureReason = "type '" + arg->type->toString() +
+                            "' is not supported in C variadic arguments";
+            break;
+          }
+          int cost = conversionCost(arg->type, promotedType);
+          match.cost.push_back(cost);
+          match.usedExtraArguments = true;
+          match.notes.push_back("c variadic: " +
+                                describeConversion(arg->type, promotedType));
           arg = wrapInCast(std::move(arg), promotedType);
+          match.argumentIsRef.push_back(false);
+          match.arguments.push_back(std::move(arg));
+        }
+        else
+        {
+          failed = true;
+          failureReason = "too many arguments";
+          break;
         }
       }
 
-      boundArgs.push_back(std::move(arg));
+      if (failed)
+      {
+        rejectionNotes.push_back("'" + renderFunctionSignature(*funcSymbol) +
+                                 "': " + failureReason);
+        continue;
+      }
+
+      if (expectedReturnType)
+      {
+        if (funcSymbol->returnType->toString() == expectedReturnType->toString())
+        {
+          match.returnCost = 0;
+          match.notes.push_back("return: exact match");
+        }
+        else if (canConvert(funcSymbol->returnType, expectedReturnType))
+        {
+          match.returnCost =
+              conversionCost(funcSymbol->returnType, expectedReturnType);
+          match.notes.push_back("return: " +
+                                describeConversion(funcSymbol->returnType,
+                                                   expectedReturnType));
+        }
+        else
+        {
+          match.returnCost = 50;
+          match.notes.push_back("return: incompatible with expected " +
+                                expectedReturnType->toString());
+        }
+      }
+
+      if (funcSymbol->isUnsafe && !isUnsafeActive())
+      {
+        blockedUnsafeMatch = funcSymbol;
+        rejectionNotes.push_back("'" + renderFunctionSignature(*funcSymbol) +
+                                 "': requires unsafe context");
+        continue;
+      }
+      matches.push_back(std::move(match));
     }
 
+    if (matches.empty())
+    {
+      if (blockedUnsafeMatch)
+      {
+        requireUnsafeEnabled(node.span, "unsafe function calls");
+        requireUnsafeContext(node.span, "unsafe function calls");
+        return;
+      }
+
+      error(node.callee_->span,
+            "No matching overload for function '" + calleeParts.back() + "'. " +
+                (rejectionNotes.empty()
+                     ? std::string()
+                     : ("Candidates: " + [&]() {
+                          std::string details;
+                          for (size_t i = 0; i < rejectionNotes.size(); ++i)
+                          {
+                            if (i != 0)
+                            {
+                              details += "; ";
+                            }
+                            details += rejectionNotes[i];
+                          }
+                          return details;
+                        }())));
+      return;
+    }
+
+    size_t bestIndex = 0;
+    for (size_t i = 1; i < matches.size(); ++i)
+    {
+      if (compareCost(matches[i], matches[bestIndex]))
+      {
+        bestIndex = i;
+      }
+    }
+
+    std::vector<size_t> ambiguous = {bestIndex};
+    for (size_t i = 0; i < matches.size(); ++i)
+    {
+      if (i == bestIndex)
+      {
+        continue;
+      }
+      if (!compareCost(matches[i], matches[bestIndex]) &&
+          !compareCost(matches[bestIndex], matches[i]))
+      {
+        ambiguous.push_back(i);
+      }
+    }
+
+    if (ambiguous.size() > 1)
+    {
+      std::string message =
+          "Call to function '" + calleeParts.back() + "' is ambiguous between ";
+      for (size_t i = 0; i < ambiguous.size(); ++i)
+      {
+        if (i != 0)
+        {
+          message += i + 1 == ambiguous.size() ? " and " : ", ";
+        }
+        message += "'" + renderFunctionSignature(*matches[ambiguous[i]].symbol) + "'";
+      }
+      message += ".";
+      if (expectedReturnType)
+      {
+        message += " Expected result type: '" + expectedReturnType->toString() + "'.";
+      }
+      message += " Candidate details: ";
+      for (size_t i = 0; i < ambiguous.size(); ++i)
+      {
+        if (i != 0)
+        {
+          message += "; ";
+        }
+        message += "'" + renderFunctionSignature(*matches[ambiguous[i]].symbol) + "' [";
+        for (size_t j = 0; j < matches[ambiguous[i]].notes.size(); ++j)
+        {
+          if (j != 0)
+          {
+            message += ", ";
+          }
+          message += matches[ambiguous[i]].notes[j];
+        }
+        message += "]";
+      }
+      error(node.callee_->span, message);
+      return;
+    }
+
+    auto &best = matches[bestIndex];
     expressionStack_.push(std::make_unique<BoundFunctionCall>(
-        funcSymbol, std::move(boundArgs), std::move(argIsRefList),
-        std::move(variadicPack)));
+        best.symbol, std::move(best.arguments), std::move(best.argumentIsRef),
+        std::move(best.variadicPack)));
   }
 
   void Binder::visit(IfNode &node)
@@ -2336,7 +3031,7 @@ namespace sema
     boundRoot_->enums.push_back(std::move(boundEnum));
   }
 
-  bool Binder::isNumeric(std::shared_ptr<zir::Type> type)
+  bool Binder::isNumeric(std::shared_ptr<zir::Type> type) const
   {
     return type->isInteger() || type->isFloatingPoint();
   }
@@ -2373,7 +3068,7 @@ namespace sema
   }
 
   bool Binder::canConvert(std::shared_ptr<zir::Type> from,
-                          std::shared_ptr<zir::Type> to)
+                          std::shared_ptr<zir::Type> to) const
   {
     if (!from || !to)
       return false;

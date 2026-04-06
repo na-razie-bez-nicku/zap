@@ -1,0 +1,15 @@
+fun choose(x: Int64) Float {
+    return 1.0;
+}
+
+fun choose(x: UInt) Int {
+    return 2;
+}
+
+fun main() Int {
+    var value: Int = choose(1.5);
+    if value != 2 {
+        return 1;
+    }
+    return 0;
+}

@@ -1,0 +1,7 @@
+fun parse(x: Int) Int {
+    return x;
+}
+
+fun parse(x: Int) Bool {
+    return true;
+}

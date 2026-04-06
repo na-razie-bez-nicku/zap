@@ -1,0 +1,27 @@
+fun pick(x: Int) Int {
+    return 11;
+}
+
+fun pick(x: Float) Int {
+    return 22;
+}
+
+fun join(a: Int, b: Int) Int {
+    return a + b;
+}
+
+fun join(a: Int, b: Int, c: Int) Int {
+    return a + b + c;
+}
+
+fun main() Int {
+    var total: Int = pick(1);
+    total = total + pick(1.5);
+    total = total + join(2, 3);
+    total = total + join(2, 3, 4);
+
+    if total != 47 {
+        return 1;
+    }
+    return 0;
+}

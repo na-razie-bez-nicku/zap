@@ -1,0 +1,7 @@
+fun parse(x: Int) Int {
+    return x;
+}
+
+fun parse(value: Int) Int {
+    return value + 1;
+}

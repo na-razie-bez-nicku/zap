@@ -528,9 +528,10 @@ std::optional<LspSignature> signatureForNode(const Node *node) {
   return std::nullopt;
 }
 
-std::optional<LspSignature> findTopLevelSignature(const sema::ModuleInfo &module,
-                                                  std::string_view name,
-                                                  bool publicOnly = false) {
+std::vector<LspSignature> findTopLevelSignatures(const sema::ModuleInfo &module,
+                                                 std::string_view name,
+                                                 bool publicOnly = false) {
+  std::vector<LspSignature> signatures;
   for (const auto &child : module.root->children) {
     const TopLevel *topLevel = dynamic_cast<const TopLevel *>(child.get());
     std::optional<std::string> childName;
@@ -546,10 +547,10 @@ std::optional<LspSignature> findTopLevelSignature(const sema::ModuleInfo &module
       continue;
     }
     if (auto signature = signatureForNode(child.get())) {
-      return signature;
+      signatures.push_back(*signature);
     }
   }
-  return std::nullopt;
+  return signatures;
 }
 
 struct CallContext {
@@ -666,26 +667,26 @@ std::optional<CallContext> callContextNearOffset(const std::string &source, size
   return std::nullopt;
 }
 
-std::optional<LspSignature> resolveSignature(const std::string &source,
-                                             const std::string &uri,
-                                             const ProjectState &project,
-                                             size_t offset,
-                                             int64_t &activeParameter) {
+std::vector<LspSignature> resolveSignatures(const std::string &source,
+                                            const std::string &uri,
+                                            const ProjectState &project,
+                                            size_t offset,
+                                            int64_t &activeParameter) {
   auto path = uriToPath(uri);
   if (!path) {
-    return std::nullopt;
+    return {};
   }
 
   auto call = callContextNearOffset(source, offset);
   if (!call) {
-    return std::nullopt;
+    return {};
   }
   activeParameter = call->activeParameter;
 
   std::string moduleId = std::filesystem::weakly_canonical(*path).string();
   auto moduleIt = project.moduleMap.find(moduleId);
   if (moduleIt == project.moduleMap.end()) {
-    return std::nullopt;
+    return {};
   }
   const sema::ModuleInfo &module = *moduleIt->second;
 
@@ -702,17 +703,18 @@ std::optional<LspSignature> resolveSignature(const std::string &source,
         if (effectiveImportAlias(import, *targetIt->second) != base) {
           continue;
         }
-        if (auto signature =
-                findTopLevelSignature(*targetIt->second, member, true)) {
-          return signature;
+        auto signatures = findTopLevelSignatures(*targetIt->second, member, true);
+        if (!signatures.empty()) {
+          return signatures;
         }
       }
     }
-    return std::nullopt;
+    return {};
   }
 
-  if (auto signature = findTopLevelSignature(module, call->callee)) {
-    return signature;
+  auto localSignatures = findTopLevelSignatures(module, call->callee);
+  if (!localSignatures.empty()) {
+    return localSignatures;
   }
 
   for (const auto &import : module.imports) {
@@ -725,15 +727,16 @@ std::optional<LspSignature> resolveSignature(const std::string &source,
         if (targetIt == project.moduleMap.end()) {
           continue;
         }
-        if (auto signature =
-                findTopLevelSignature(*targetIt->second, binding.sourceName, true)) {
-          return signature;
+        auto signatures =
+            findTopLevelSignatures(*targetIt->second, binding.sourceName, true);
+        if (!signatures.empty()) {
+          return signatures;
         }
       }
     }
   }
 
-  return std::nullopt;
+  return {};
 }
 
 std::optional<HoverInfo> hoverForNode(const Node *node) {
@@ -883,28 +886,46 @@ std::optional<HoverInfo> resolveHover(const std::string &source,
   return std::nullopt;
 }
 
-JsonObject makeSignatureHelp(const LspSignature &signature, int64_t activeParameter) {
-  JsonObject::List parameters;
-  parameters.reserve(signature.parameters.size());
-  for (const auto &param : signature.parameters) {
-    JsonObject::Object parameter;
-    parameter.emplace("label", JsonObject(param));
-    parameters.push_back(JsonObject(std::move(parameter)));
+JsonObject makeSignatureHelp(const std::vector<LspSignature> &signatures,
+                             int64_t activeSignature,
+                             int64_t activeParameter) {
+  JsonObject::List signatureItems;
+  signatureItems.reserve(signatures.size());
+  for (const auto &signature : signatures) {
+    JsonObject::List parameters;
+    parameters.reserve(signature.parameters.size());
+    for (const auto &param : signature.parameters) {
+      JsonObject::Object parameter;
+      parameter.emplace("label", JsonObject(param));
+      parameters.push_back(JsonObject(std::move(parameter)));
+    }
+
+    JsonObject::Object sig;
+    sig.emplace("label", JsonObject(signature.label));
+    sig.emplace("parameters", JsonObject(std::move(parameters)));
+    signatureItems.push_back(JsonObject(std::move(sig)));
   }
 
-  JsonObject::Object sig;
-  sig.emplace("label", JsonObject(signature.label));
-  sig.emplace("parameters", JsonObject(std::move(parameters)));
+  int64_t clampedSignature = signatures.empty()
+                                 ? 0
+                                 : std::max<int64_t>(
+                                       0, std::min<int64_t>(
+                                              activeSignature,
+                                              static_cast<int64_t>(signatures.size() - 1)));
+  int64_t clampedParameter = 0;
+  if (!signatures.empty()) {
+    clampedParameter = std::max<int64_t>(
+        0, std::min<int64_t>(
+               activeParameter,
+               static_cast<int64_t>(signatures[clampedSignature].parameters.empty()
+                                        ? 0
+                                        : signatures[clampedSignature].parameters.size() - 1)));
+  }
 
   JsonObject::Object result;
-  result.emplace("signatures", JsonObject(JsonObject::List{JsonObject(std::move(sig))}));
-  result.emplace("activeSignature", JsonObject(int64_t(0)));
-  result.emplace("activeParameter",
-                 JsonObject(std::max<int64_t>(0, std::min<int64_t>(
-                                                  activeParameter,
-                                                  static_cast<int64_t>(signature.parameters.empty()
-                                                                           ? 0
-                                                                           : signature.parameters.size() - 1)))));
+  result.emplace("signatures", JsonObject(std::move(signatureItems)));
+  result.emplace("activeSignature", JsonObject(clampedSignature));
+  result.emplace("activeParameter", JsonObject(clampedParameter));
   return JsonObject(std::move(result));
 }
 
@@ -1747,10 +1768,19 @@ int main() {
           if (project) {
             size_t offset = offsetFromPosition(document->text, *line, *character);
             int64_t activeParameter = 0;
-            auto signature = resolveSignature(document->text, *uri, *project, offset,
-                                              activeParameter);
-            if (signature) {
-              result = makeSignatureHelp(*signature, activeParameter);
+            auto signatures = resolveSignatures(document->text, *uri, *project, offset,
+                                                activeParameter);
+            if (!signatures.empty()) {
+              int64_t activeSignature = 0;
+              for (size_t i = 0; i < signatures.size(); ++i) {
+                if (activeParameter <
+                    static_cast<int64_t>(std::max<size_t>(size_t(1),
+                                                          signatures[i].parameters.size()))) {
+                  activeSignature = static_cast<int64_t>(i);
+                  break;
+                }
+              }
+              result = makeSignatureHelp(signatures, activeSignature, activeParameter);
             }
           }
         }
