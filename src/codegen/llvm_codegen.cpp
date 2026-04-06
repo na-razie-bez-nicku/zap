@@ -183,10 +183,11 @@ namespace codegen
   }
 
   llvm::FunctionType *
-  LLVMCodeGen::buildFunctionType(const sema::FunctionSymbol &sym)
+  LLVMCodeGen::buildFunctionType(const sema::FunctionSymbol &sym,
+                                 bool injectMainProcessArgs)
   {
     std::vector<llvm::Type *> paramTypes;
-    if (sym.linkName == "main")
+    if (injectMainProcessArgs)
     {
       paramTypes.push_back(llvm::Type::getInt32Ty(ctx_));
       paramTypes.push_back(
@@ -229,13 +230,14 @@ namespace codegen
 
     for (const auto &fn : node.functions)
     {
-      auto *ft = buildFunctionType(*fn->symbol);
+      bool isEntryMain = fn->symbol->linkName == "main";
+      auto *ft = buildFunctionType(*fn->symbol, isEntryMain);
       auto *f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage,
                                        fn->symbol->linkName, *module_);
       size_t idx = 0;
       for (auto &arg : f->args())
       {
-        if (fn->symbol->linkName == "main")
+        if (isEntryMain)
         {
           if (idx == 0)
           {

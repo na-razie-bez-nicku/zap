@@ -71,7 +71,8 @@ namespace codegen
     std::vector<std::pair<llvm::BasicBlock *, llvm::BasicBlock *>> loopBBStack_;
 
     llvm::Type *toLLVMType(const zir::Type &ty);
-    llvm::FunctionType *buildFunctionType(const sema::FunctionSymbol &sym);
+    llvm::FunctionType *buildFunctionType(const sema::FunctionSymbol &sym,
+                                          bool injectMainProcessArgs = false);
 
     llvm::AllocaInst *createEntryAlloca(llvm::Function *fn,
                       const std::string &name, llvm::Type *ty);
