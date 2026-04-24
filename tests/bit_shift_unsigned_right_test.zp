@@ -1,0 +1,34 @@
+fun main() Int {
+    // Unsigned all-ones value in 32-bit width.
+    var all: UInt = 0xFFFF_FFFF;
+
+    // Logical right shift should zero-fill from the left.
+    var r1: UInt = all >> 1;   // 0x7FFF_FFFF
+    var r4: UInt = all >> 4;   // 0x0FFF_FFFF
+    var r31: UInt = all >> 31; // 0x0000_0001
+
+    if r1 != 0x7FFF_FFFF {
+        return 1;
+    }
+    if r4 != 0x0FFF_FFFF {
+        return 2;
+    }
+    if r31 != 1 {
+        return 3;
+    }
+
+    // Ensure a regular unsigned value round-trips as expected.
+    var base: UInt = 0x1234_5678;
+    var shifted: UInt = base >> 8; // 0x0012_3456
+    if shifted != 0x0012_3456 {
+        return 4;
+    }
+
+    // Shift by zero should be identity.
+    var id: UInt = base >> 0;
+    if id != base {
+        return 5;
+    }
+
+    return 0;
+}

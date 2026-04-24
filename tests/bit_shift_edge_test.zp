@@ -1,0 +1,65 @@
+fun main() Int {
+    // Signed arithmetic right shift should preserve sign bit.
+    var s_neg: Int = -16;
+    var s_r1: Int = s_neg >> 1;   // -8
+    var s_r2: Int = s_neg >> 3;   // -2
+    if s_r1 != -8 {
+        return 1;
+    }
+    if s_r2 != -2 {
+        return 2;
+    }
+
+    // Signed left shift on positive values.
+    var s_pos: Int = 3;
+    var s_l1: Int = s_pos << 4;   // 48
+    if s_l1 != 48 {
+        return 3;
+    }
+
+    // Unsigned logical right shift should fill with zeroes.
+    var u_all: UInt = 0xFFFF_FFFF;
+    var u_r1: UInt = u_all >> 1;  // 0x7FFF_FFFF
+    if u_r1 != 0x7FFF_FFFF {
+        return 4;
+    }
+
+    // Unsigned left shift and right shift round-trip for a safe value.
+    var u_base: UInt = 0x00FF_0000;
+    var u_l1: UInt = u_base << 4;
+    var u_back: UInt = u_l1 >> 4;
+    if u_back != u_base {
+        return 5;
+    }
+
+    // Shift-by-zero should be identity.
+    var z1: Int = 123456 << 0;
+    var z2: Int = 123456 >> 0;
+    var z3: UInt = 0xABCD_EF01 >> 0;
+    if z1 != 123456 {
+        return 6;
+    }
+    if z2 != 123456 {
+        return 7;
+    }
+    if z3 != 0xABCD_EF01 {
+        return 8;
+    }
+
+    // Constant expression edge within Int32 width boundary.
+    var edge_l32: Int32 = 1;
+    edge_l32 = edge_l32 << 31;
+    var edge_r32: Int32 = edge_l32 >> 31;
+    var neg_one_i32: Int32 = -1;
+    if edge_r32 != neg_one_i32 {
+        return 9;
+    }
+
+    // Mixed expressions around precedence and associativity.
+    var p1: Int = (2 << 3) + (64 >> 4); // 16 + 4 = 20
+    if p1 != 20 {
+        return 10;
+    }
+
+    return 0;
+}

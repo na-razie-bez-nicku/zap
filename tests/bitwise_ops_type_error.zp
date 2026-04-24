@@ -1,0 +1,17 @@
+fun main() Int {
+    var i: Int = 7;
+    var f: Float = 2.0;
+    var b: Bool = true;
+
+    // Bitwise operators require integer operands.
+    var bad_and_1: Int = i & f;
+    var bad_and_2: Int = b & i;
+
+    var bad_or_1: Int = i | f;
+    var bad_or_2: Int = b | i;
+
+    var bad_xor_1: Int = i ^ f;
+    var bad_xor_2: Int = b ^ i;
+
+    return bad_and_1 + bad_and_2 + bad_or_1 + bad_or_2 + bad_xor_1 + bad_xor_2;
+}

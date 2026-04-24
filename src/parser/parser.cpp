@@ -866,8 +866,7 @@ Parser::parseBinaryExpression(int minPrecedence) {
 
     eat(opToken.type);
 
-    int nextMinPrecedence =
-        (opToken.type == TokenType::POW) ? precedence : precedence + 1;
+    int nextMinPrecedence = precedence + 1;
 
     auto right = parseBinaryExpression(nextMinPrecedence);
 
@@ -883,8 +882,8 @@ Parser::parseBinaryExpression(int minPrecedence) {
 
 std::unique_ptr<ExpressionNode> Parser::parseUnaryExpression() {
   if (peek().type == TokenType::NOT || peek().type == TokenType::MINUS ||
-      peek().type == TokenType::PLUS || peek().type == TokenType::REFERENCE ||
-      peek().type == TokenType::MULTIPLY) {
+      peek().type == TokenType::PLUS || peek().type == TokenType::MULTIPLY ||
+      peek().type == TokenType::REFERENCE || peek().type == TokenType::CONCAT) {
     Token opToken = eat(peek().type);
     auto expr = parseUnaryExpression();
     SourceSpan endSpan = expr->span;
@@ -1140,26 +1139,31 @@ int Parser::getPrecedence(TokenType type) {
   switch (type) {
   case TokenType::OR:
     return 2;
-  case TokenType::AND:
+  case TokenType::BIT_OR:
     return 3;
-  case TokenType::CONCAT:
-    return 1;
+  case TokenType::POW:
+    return 4;
+  case TokenType::AND:
+    return 5;
+  case TokenType::REFERENCE:
+    return 6;
   case TokenType::EQUAL:
   case TokenType::NOTEQUAL:
   case TokenType::LESS:
   case TokenType::LESSEQUAL:
   case TokenType::GREATER:
   case TokenType::GREATEREQUAL:
-    return 5;
+    return 7;
+  case TokenType::LSHIFT:
+  case TokenType::RSHIFT:
+    return 8;
   case TokenType::PLUS:
   case TokenType::MINUS:
-    return 10;
+    return 9;
   case TokenType::MULTIPLY:
   case TokenType::DIVIDE:
   case TokenType::MODULO:
-    return 20;
-  case TokenType::POW:
-    return 30;
+    return 10;
   default:
     return -1;
   }

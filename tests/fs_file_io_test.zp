@@ -7,7 +7,7 @@ fun main() Int {
     var filePath: String = path.join("/tmp", "zap_fs_file_io.txt");
     var content: String = "hello\nzap";
 
-    process.exec("rm -f \"" ~ filePath ~ "\"");
+    process.exec("rm -f \"" + filePath + "\"");
 
     if fs.writeFile(filePath, content) != 0 {
         return 1;
@@ -33,6 +33,6 @@ fun main() Int {
         return 6;
     }
 
-    process.exec("rm -f \"" ~ filePath ~ "\"");
+    process.exec("rm -f \"" + filePath + "\"");
     return 0;
 }

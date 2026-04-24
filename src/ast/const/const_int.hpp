@@ -1,5 +1,8 @@
 #pragma once
+#include "../expr_node.hpp"
 #include "../visitor.hpp"
+#include <cstdint>
+#include <string>
 
 class ConstInt : public ExpressionNode {
 public:

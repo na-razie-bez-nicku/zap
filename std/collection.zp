@@ -389,7 +389,7 @@ pub class HashMap<V> {
     pub fun get(key: String) V {
         var node: HashMapNode<V> = self.findNode(key);
         if node == null {
-            fail("HashMap.get() missing key: " ~ key);
+            fail("HashMap.get() missing key: " + key);
         }
         return node.getValue();
     }

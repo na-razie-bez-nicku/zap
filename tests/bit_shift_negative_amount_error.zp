@@ -1,0 +1,11 @@
+fun main() Int {
+    var x: Int = 1;
+
+    // Negative constant shift amount should be rejected by semantic analysis.
+    var bad1: Int = x << -1;
+
+    // Also reject negative amount for right shift.
+    var bad2: Int = x >> -2;
+
+    return bad1 + bad2;
+}

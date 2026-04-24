@@ -1,0 +1,14 @@
+fun main() Int {
+    var x: Int = 1;
+
+    // Negative shift amount should be rejected.
+    var badNeg: Int = x << -1;
+
+    // Shift amount equal to bit width (Int is 32-bit here) should be rejected.
+    var badEqWidth: Int = x >> 32;
+
+    // Shift amount greater than bit width should be rejected.
+    var badGtWidth: Int = x << 40;
+
+    return badNeg + badEqWidth + badGtWidth;
+}

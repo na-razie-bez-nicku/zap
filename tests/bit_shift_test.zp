@@ -1,0 +1,56 @@
+fun main() Int {
+    // Basic left shift
+    var a: Int = 1 << 5;      // 32
+    if a != 32 {
+        return 1;
+    }
+
+    // Basic right shift
+    var b: Int = 32 >> 3;     // 4
+    if b != 4 {
+        return 2;
+    }
+
+    // Compound expression / precedence sanity
+    // Shifts should bind lower than + and - in this compiler setup.
+    var c: Int = 1 + 2 << 3;  // (1 + 2) << 3 = 24
+    if c != 24 {
+        return 3;
+    }
+
+    var d: Int = 64 >> 2 + 1; // 64 >> (2 + 1) = 8
+    if d != 8 {
+        return 4;
+    }
+
+    // Large-ish shifts
+    var e: Int = 7 << 10;     // 7168
+    if e != 7168 {
+        return 5;
+    }
+
+    // Arithmetic right shift for signed ints
+    var f: Int = -8 >> 1;     // -4
+    if f != -4 {
+        return 6;
+    }
+
+    // Zero shift no-op
+    var g: Int = 12345 << 0;
+    if g != 12345 {
+        return 7;
+    }
+
+    var h: Int = 12345 >> 0;
+    if h != 12345 {
+        return 8;
+    }
+
+    // Mixed with other arithmetic
+    var i: Int = (3 << 4) + (64 >> 5); // 48 + 2 = 50
+    if i != 50 {
+        return 9;
+    }
+
+    return 0;
+}

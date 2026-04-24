@@ -3,9 +3,9 @@ import "std/process";
 
 fun main() Int {
     var cwd: String = process.cwd();
-    var stdDir: String = cwd ~ "/std";
-    var buildSh: String = cwd ~ "/build.sh";
-    var missing: String = cwd ~ "/definitely_missing_path_12345";
+    var stdDir: String = cwd + "/std";
+    var buildSh: String = cwd + "/build.sh";
+    var missing: String = cwd + "/definitely_missing_path_12345";
 
     if !fs.exists(stdDir) {
         return 1;

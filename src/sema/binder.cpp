@@ -2720,7 +2720,9 @@ void Binder::visit(BinExpr &node) {
   auto rightType = right->type;
   std::shared_ptr<zir::Type> resultType = leftType;
 
-  if (node.op_ == "~") {
+  if (node.op_ == "+" &&
+      ((isStringType(leftType) || leftType->getKind() == zir::TypeKind::Char) ||
+       (isStringType(rightType) || rightType->getKind() == zir::TypeKind::Char))) {
     bool leftOk =
         isStringType(leftType) || leftType->getKind() == zir::TypeKind::Char;
     bool rightOk =
@@ -2761,7 +2763,7 @@ void Binder::visit(BinExpr &node) {
                 "' and '" + rightType->toString() + "'");
     }
   } else if (node.op_ == "+" || node.op_ == "-" || node.op_ == "*" ||
-             node.op_ == "/" || node.op_ == "%" || node.op_ == "^") {
+             node.op_ == "/" || node.op_ == "%") {
     if (!isNumeric(leftType) || !isNumeric(rightType)) {
       error(SourceSpan::merge(node.left_->span, node.right_->span),
             "Operator '" + node.op_ + "' cannot be applied to '" +
@@ -2770,6 +2772,44 @@ void Binder::visit(BinExpr &node) {
       resultType = getPromotedType(leftType, rightType);
       left = wrapInCast(std::move(left), resultType);
       right = wrapInCast(std::move(right), resultType);
+    }
+  } else if (node.op_ == "&" || node.op_ == "|" || node.op_ == "^") {
+    if (!leftType->isInteger() || !rightType->isInteger()) {
+      error(SourceSpan::merge(node.left_->span, node.right_->span),
+            "Bitwise operator '" + node.op_ +
+                "' requires integer operands, got '" +
+                leftType->toString() + "' and '" + rightType->toString() + "'");
+    } else {
+      resultType = getPromotedType(leftType, rightType);
+      left = wrapInCast(std::move(left), resultType);
+      right = wrapInCast(std::move(right), resultType);
+    }
+  } else if (node.op_ == "<<" || node.op_ == ">>") {
+    if (!leftType->isInteger() || !rightType->isInteger()) {
+      error(SourceSpan::merge(node.left_->span, node.right_->span),
+            "Shift operator '" + node.op_ + "' requires integer operands, got '" +
+                leftType->toString() + "' and '" + rightType->toString() + "'");
+    } else {
+      // Keep the left-hand integer type for shift results.
+      resultType = leftType;
+      right = wrapInCast(std::move(right), resultType);
+
+      if (auto shiftAmount = evaluateConstantInt(right.get())) {
+        if (*shiftAmount < 0) {
+          error(SourceSpan::merge(node.left_->span, node.right_->span),
+                "Shift amount must be non-negative, got '" +
+                    std::to_string(*shiftAmount) + "'.");
+        } else {
+          unsigned width =
+              static_cast<unsigned>(typeBitWidth(resultType));
+          if (width == 0 || static_cast<uint64_t>(*shiftAmount) >= width) {
+            error(SourceSpan::merge(node.left_->span, node.right_->span),
+                  "Shift amount '" + std::to_string(*shiftAmount) +
+                      "' is out of range for type '" + resultType->toString() +
+                      "' (" + std::to_string(width) + "-bit width).");
+          }
+        }
+      }
     }
   } else if (node.op_ == "==" || node.op_ == "!=" || node.op_ == "<" ||
              node.op_ == "<=" || node.op_ == ">" || node.op_ == ">=") {
@@ -4030,6 +4070,33 @@ Binder::evaluateConstantInt(const BoundExpression *expr) {
     if (binary->op == "%")
       return *right == 0 ? std::nullopt
                          : std::optional<int64_t>(*left % *right);
+    if (binary->op == "&")
+      return *left & *right;
+    if (binary->op == "|")
+      return *left | *right;
+    if (binary->op == "^")
+      return *left ^ *right;
+    if (binary->op == "<<") {
+      if (*right < 0)
+        return std::nullopt;
+      unsigned width = binary->left->type
+                           ? static_cast<unsigned>(typeBitWidth(binary->left->type))
+                           : 0u;
+      if (width == 0 || static_cast<uint64_t>(*right) >= width)
+        return std::nullopt;
+      return static_cast<int64_t>(
+          static_cast<uint64_t>(*left) << static_cast<uint64_t>(*right));
+    }
+    if (binary->op == ">>") {
+      if (*right < 0)
+        return std::nullopt;
+      unsigned width = binary->left->type
+                           ? static_cast<unsigned>(typeBitWidth(binary->left->type))
+                           : 0u;
+      if (width == 0 || static_cast<uint64_t>(*right) >= width)
+        return std::nullopt;
+      return *left >> static_cast<uint64_t>(*right);
+    }
   }
 
   return std::nullopt;
@@ -4180,6 +4247,11 @@ void Binder::visit(UnaryExpr &node) {
   } else if (node.op_ == "!") {
     if (type->getKind() != zir::TypeKind::Bool) {
       error(node.span, "Operator '!' cannot be applied to type '" +
+                           type->toString() + "'");
+    }
+  } else if (node.op_ == "~") {
+    if (!type->isInteger()) {
+      error(node.span, "Operator '~' cannot be applied to type '" +
                            type->toString() + "'");
     }
   }
@@ -4419,6 +4491,7 @@ Binder::getPromotedType(std::shared_ptr<zir::Type> t1,
                         std::shared_ptr<zir::Type> t2) {
   if (t1->toString() == t2->toString())
     return t1;
+
   if (t1->isFloatingPoint() || t2->isFloatingPoint()) {
     if (t1->getKind() == zir::TypeKind::Float64 ||
         t2->getKind() == zir::TypeKind::Float64) {
@@ -4426,6 +4499,60 @@ Binder::getPromotedType(std::shared_ptr<zir::Type> t1,
     }
     return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Float);
   }
+
+  // Integer promotion: preserve unsignedness when both operands are unsigned,
+  // and choose width-aware integer kinds instead of always forcing Int64.
+  if (isUnsignedIntegerType(t1) && isUnsignedIntegerType(t2)) {
+    int width = std::max(typeBitWidth(t1), typeBitWidth(t2));
+    if (width <= 8)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt8);
+    if (width <= 16)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt16);
+    if (width <= 32)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt);
+    return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt64);
+  }
+
+  // Mixed signed/unsigned or both signed:
+  // - preserve unsignedness when the unsigned operand width is >= signed width
+  //   (e.g. Int + UInt -> UInt, Int16 + UInt16 -> UInt16, Int + UInt64 -> UInt64)
+  // - otherwise use signed, width-aware promotion.
+  if ((isUnsignedIntegerType(t1) && isSignedIntegerType(t2)) ||
+      (isSignedIntegerType(t1) && isUnsignedIntegerType(t2))) {
+    auto unsignedType = isUnsignedIntegerType(t1) ? t1 : t2;
+    auto signedType = isUnsignedIntegerType(t1) ? t2 : t1;
+
+    int unsignedWidth = typeBitWidth(unsignedType);
+    int signedWidth = typeBitWidth(signedType);
+
+    if (unsignedWidth >= signedWidth) {
+      if (unsignedWidth <= 8)
+        return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt8);
+      if (unsignedWidth <= 16)
+        return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt16);
+      if (unsignedWidth <= 32)
+        return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt);
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::UInt64);
+    }
+
+    int width = std::max(unsignedWidth, signedWidth);
+    if (width <= 8)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int8);
+    if (width <= 16)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int16);
+    if (width <= 32)
+      return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int);
+    return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int64);
+  }
+
+  // Both signed: keep signed result, width-aware.
+  int width = std::max(typeBitWidth(t1), typeBitWidth(t2));
+  if (width <= 8)
+    return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int8);
+  if (width <= 16)
+    return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int16);
+  if (width <= 32)
+    return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int);
   return std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int64);
 }
 

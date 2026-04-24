@@ -67,6 +67,8 @@ enum TokenType {
   BIT_OR = 61,        ///< '|' symbol.
   ALIAS = 62,         ///< "alias" keyword.
   REF = 63,           ///< "ref" keyword.
+  LSHIFT,             ///< '<<' symbol.
+  RSHIFT,             ///< '>>' symbol.
   AS,
   GLOBAL,
   CONST,
@@ -186,8 +188,12 @@ inline std::string tokenTypeToString(TokenType type) {
     return "-";
   case TokenType::MULTIPLY:
     return "*";
+  case TokenType::REFERENCE:
+    return "&";
   case TokenType::DIVIDE:
     return "/";
+  case TokenType::CONCAT:
+    return "~";
   case TokenType::ID:
     return "identifier";
   case TokenType::INTEGER:
@@ -212,10 +218,12 @@ inline std::string tokenTypeToString(TokenType type) {
     return "alias";
   case TokenType::REF:
     return "ref";
+  case TokenType::LSHIFT:
+    return "<<";
+  case TokenType::RSHIFT:
+    return ">>";
   case TokenType::AS:
     return "as";
-  case TokenType::CONCAT:
-    return "~";
   case TokenType::CLASS:
     return "class";
   case TokenType::PROT:

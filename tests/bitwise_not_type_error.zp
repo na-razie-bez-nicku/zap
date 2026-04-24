@@ -1,0 +1,14 @@
+fun main() Int {
+    var i: Int = 7;
+    var f: Float = 2.5;
+    var b: Bool = true;
+    var s: String = "zap";
+
+    // Unary bitwise-not requires integer operands.
+    var ok: Int = ~i;
+    var bad_float: Float = ~f;
+    var bad_bool: Bool = ~b;
+    var bad_string: String = ~s;
+
+    return ok;
+}

@@ -3,10 +3,10 @@ import "std/process";
 
 fun main() Int {
     var root: String = "/tmp/zap_fs_mkdir";
-    var nested: String = root ~ "/a/b/c";
-    var filePath: String = root ~ "/marker.txt";
+    var nested: String = root + "/a/b/c";
+    var filePath: String = root + "/marker.txt";
 
-    process.exec("rm -rf \"" ~ root ~ "\"");
+    process.exec("rm -rf \"" + root + "\"");
 
     if fs.exists(root) {
         return 1;
@@ -32,7 +32,7 @@ fun main() Int {
         return 6;
     }
 
-    if process.exec("sh -c 'printf x > \"" ~ filePath ~ "\"'") != 0 {
+    if process.exec("sh -c 'printf x > \"" + filePath + "\"'") != 0 {
         return 7;
     }
 
@@ -40,7 +40,7 @@ fun main() Int {
         return 8;
     }
 
-    process.exec("rm -rf \"" ~ root ~ "\"");
+    process.exec("rm -rf \"" + root + "\"");
 
     if fs.exists(root) {
         return 9;

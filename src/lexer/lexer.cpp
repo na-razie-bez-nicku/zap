@@ -211,7 +211,13 @@ std::vector<Token> Lexer::tokenize(const std::string &input) {
         continue;
       }
     } else if (_cur == '<') {
-      if (Peek2() == '=') {
+      if (Peek2() == '<') {
+        tokens.emplace_back(TokenType::LSHIFT, "<<", startLine, startColumn,
+                            startPos, 2);
+        _pos += 2;
+        _column += 2;
+        continue;
+      } else if (Peek2() == '=') {
         tokens.emplace_back(TokenType::LESSEQUAL, "<=", startLine, startColumn,
                             startPos, 2);
         _pos += 2;
@@ -225,7 +231,13 @@ std::vector<Token> Lexer::tokenize(const std::string &input) {
         continue;
       }
     } else if (_cur == '>') {
-      if (Peek2() == '=') {
+      if (Peek2() == '>') {
+        tokens.emplace_back(TokenType::RSHIFT, ">>", startLine, startColumn,
+                            startPos, 2);
+        _pos += 2;
+        _column += 2;
+        continue;
+      } else if (Peek2() == '=') {
         tokens.emplace_back(TokenType::GREATEREQUAL, ">=", startLine,
                             startColumn, startPos, 2);
         _pos += 2;

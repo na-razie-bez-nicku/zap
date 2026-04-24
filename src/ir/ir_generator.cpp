@@ -362,6 +362,16 @@ void BoundIRGenerator::visit(sema::BoundBinaryExpression &node) {
       op = isUnsigned ? OpCode::UDiv : OpCode::SDiv;
     else if (node.op == "%")
       op = isUnsigned ? OpCode::URem : OpCode::SRem;
+    else if (node.op == "<<")
+      op = OpCode::Shl;
+    else if (node.op == ">>")
+      op = isUnsigned ? OpCode::LShr : OpCode::AShr;
+    else if (node.op == "&")
+      op = OpCode::BitAnd;
+    else if (node.op == "|")
+      op = OpCode::BitOr;
+    else if (node.op == "^")
+      op = OpCode::BitXor;
     else
       op = OpCode::Add;
 
@@ -506,6 +516,15 @@ void BoundIRGenerator::visit(sema::BoundUnaryExpression &node) {
     auto reg = createRegister(node.type);
     currentBlock_->addInstruction(
         std::make_unique<CmpInst>("eq", reg, expr, zero));
+    valueStack_.push(reg);
+    return;
+  }
+
+  if (node.op == "~") {
+    auto allOnes = std::make_shared<Constant>("-1", node.type);
+    auto reg = createRegister(node.type);
+    currentBlock_->addInstruction(
+        std::make_unique<BinaryInst>(OpCode::BitXor, reg, expr, allOnes));
     valueStack_.push(reg);
     return;
   }

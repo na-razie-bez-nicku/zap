@@ -17,6 +17,12 @@ enum class OpCode {
   UDiv,
   SRem,
   URem,
+  Shl,
+  LShr,
+  AShr,
+  BitAnd,
+  BitOr,
+  BitXor,
   Cmp,
   Br,
   CondBr,
@@ -74,6 +80,24 @@ public:
       break;
     case OpCode::URem:
       opStr = "urem";
+      break;
+    case OpCode::Shl:
+      opStr = "shl";
+      break;
+    case OpCode::LShr:
+      opStr = "lshr";
+      break;
+    case OpCode::AShr:
+      opStr = "ashr";
+      break;
+    case OpCode::BitAnd:
+      opStr = "and";
+      break;
+    case OpCode::BitOr:
+      opStr = "or";
+      break;
+    case OpCode::BitXor:
+      opStr = "xor";
       break;
     default:
       opStr = "binary";

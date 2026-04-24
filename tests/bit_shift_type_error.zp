@@ -1,0 +1,12 @@
+fun main() Int {
+    var x: Int = 8;
+    var y: Float = 2.0;
+
+    // Shift amount must be an integer.
+    var bad1: Int = x << y;
+
+    // Left operand must also be an integer.
+    var bad2: Int = y >> x;
+
+    return bad1 + bad2;
+}

@@ -1,0 +1,51 @@
+fun main() Int {
+    // Unary bitwise-not on signed integers
+    var a: Int = ~0;            // -1
+    if a != -1 {
+        return 1;
+    }
+
+    var b: Int = ~1;            // -2
+    if b != -2 {
+        return 2;
+    }
+
+    var c: Int = ~(-1);         // 0
+    if c != 0 {
+        return 3;
+    }
+
+    // Unary bitwise-not on unsigned integers
+    var ua: UInt = ~0;          // all bits set (for UInt width)
+    var ua_half_shift: UInt = ua >> 1;
+    var ua_half_div: UInt = ua / 2;
+    if ua_half_shift != ua_half_div {
+        return 4;
+    }
+
+    var ub: UInt = ~0xFFFF_0000;
+    var all_bits: UInt = ~0;
+    var ub_restored: UInt = ub | 0xFFFF_0000;
+    if ub_restored != all_bits {
+        return 5;
+    }
+
+    // Interaction with other bitwise operators
+    var d: Int = ~0 & 0b1010; // (-1) & 10 = 10
+    if d != 10 {
+        return 6;
+    }
+
+    var e: Int = ~0b1010;       // ...11110101 = -11 (two's complement)
+    if e != -11 {
+        return 7;
+    }
+
+    // Precedence sanity: unary ~ binds before binary ops
+    var f: Int = ~1 << 2;       // (~1) << 2 = (-2) << 2 = -8
+    if f != -8 {
+        return 8;
+    }
+
+    return 0;
+}
