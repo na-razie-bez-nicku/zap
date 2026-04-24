@@ -1,5 +1,6 @@
-import "std/io" { printfln };
+import "std/io" { printfln, printBool, println };
 import "std/collection";
+import "std/convert";
 
 fun sum(values: collection.List<Int>) Int {
     var total: Int = 0;
@@ -28,6 +29,41 @@ fun main() Int {
     printfln("popped back=%d", numbers.popBack());
     numbers.popFront();
     printfln("after pop sum=%d", sum(numbers));
+
+    var scores: collection.HashMap<Int> = new collection.HashMap<Int>();
+    scores.put("alice", 12);
+    scores.put("bob", 7);
+    scores.put("alice", 15);
+
+    printfln("map len=%d", scores.len());
+    printfln("alice=%d", scores.get("alice"));
+    printfln("charlie(or)=%d", scores.getOr("charlie", -1));
+    println("has bob=");
+    printBool(scores.contains("bob"));
+    println("remove bob=");
+    printBool(scores.remove("bob"));
+    println("has bob=");
+    printBool(scores.contains("bob"));
+
+    scores.clear();
+    println("map empty=");
+    printBool(scores.isEmpty());
+
+    var grow: collection.HashMap<Int> = new collection.HashMap<Int>();
+    printfln("cap(0)=%d", grow.bucketCapacity());
+
+    var i: Int = 0;
+    while i < 49 {
+        grow.put("k" ~ convert.toString(i), i);
+        i = i + 1;
+    }
+    printfln("cap(49)=%d", grow.bucketCapacity());
+
+    while i < 97 {
+        grow.put("k" ~ convert.toString(i), i);
+        i = i + 1;
+    }
+    printfln("cap(97)=%d", grow.bucketCapacity());
 
     return 0;
 }
