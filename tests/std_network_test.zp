@@ -1,0 +1,258 @@
+import "std/network";
+import "std/string";
+
+fun main() Int {
+    // Basic helpers
+    if network.okCode() != 0 {
+        return 1;
+    }
+
+    if network.invalidFd() != -1 {
+        return 2;
+    }
+
+    if network.isValidFd(network.invalidFd()) {
+        return 3;
+    }
+
+    if network.closeIfOpen(network.invalidFd()) != 0 {
+        return 4;
+    }
+
+    // Endpoint helpers
+    var ep: network.Endpoint = network.endpoint("127.0.0.1", 39092);
+    if !string.eq(ep.host, "127.0.0.1") {
+        return 5;
+    }
+    if ep.port != 39092 {
+        return 6;
+    }
+
+    // Invalid argument paths should fail and set non-zero error
+    if network.connect("127.0.0.1", 0) != network.invalidFd() {
+        return 7;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 8;
+    }
+
+    if network.listen("", 0) != network.invalidFd() {
+        return 9;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 10;
+    }
+
+    if network.accept(network.invalidFd()) != network.invalidFd() {
+        return 11;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 12;
+    }
+
+    if network.send(network.invalidFd(), "x") != -1 {
+        return 13;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 14;
+    }
+
+    if string.len(network.recv(network.invalidFd(), 8)) != 0 {
+        return 15;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 16;
+    }
+
+    if string.len(network.resolve("")) != 0 {
+        return 17;
+    }
+    if network.lastErrorCode() == network.okCode() {
+        return 18;
+    }
+
+    // lastError helper object
+    var errObj: network.NetError = network.lastError("expected invalid input");
+    if errObj.code == network.okCode() {
+        return 19;
+    }
+    if string.len(errObj.message) == 0 {
+        return 20;
+    }
+
+    // Hostname resolution should work for localhost
+    var localhostIp: String = network.resolve("localhost");
+    if string.len(localhostIp) == 0 {
+        return 21;
+    }
+    if network.lastErrorCode() != network.okCode() {
+        return 22;
+    }
+
+    // Listener API (Zap class wrapper)
+    var listener: network.Listener = network.bind("*", 39092);
+    if !listener.isOpen() {
+        // In constrained CI/network namespaces this may fail; skip active socket part.
+        return 0;
+    }
+
+    if listener.fdValue() < 0 {
+        listener.close();
+        return 23;
+    }
+
+    // Stream API via dialEndpoint
+    var client: network.Stream = network.dialEndpoint(ep);
+    if !client.isOpen() {
+        listener.close();
+        return 24;
+    }
+
+    // Accept as Stream
+    var server: network.Stream = listener.accept();
+    if !server.isOpen() {
+        client.close();
+        listener.close();
+        return 25;
+    }
+
+    if client.fdValue() < 0 || server.fdValue() < 0 {
+        server.close();
+        client.close();
+        listener.close();
+        return 26;
+    }
+
+    // sendAll + recvExact
+    if client.sendAll("ping") != 4 {
+        server.close();
+        client.close();
+        listener.close();
+        return 27;
+    }
+
+    var gotExact: String = server.recvExact(4);
+    if !string.eq(gotExact, "ping") {
+        server.close();
+        client.close();
+        listener.close();
+        return 28;
+    }
+
+    // sendLine + recvLine (Zap buffered path)
+    if server.sendLine("pong") <= 0 {
+        server.close();
+        client.close();
+        listener.close();
+        return 29;
+    }
+
+    var gotLine: String = client.recvLine(128);
+    if !string.eq(gotLine, "pong\n") {
+        server.close();
+        client.close();
+        listener.close();
+        return 30;
+    }
+
+    if client.readBufferedBytes() != 0 {
+        server.close();
+        client.close();
+        listener.close();
+        return 31;
+    }
+
+    client.clearBuffer();
+    if client.readBufferedBytes() != 0 {
+        server.close();
+        client.close();
+        listener.close();
+        return 32;
+    }
+
+    // recvUntil delimiter
+    if server.sendAll("a|b") != 3 {
+        server.close();
+        client.close();
+        listener.close();
+        return 33;
+    }
+
+    var firstPart: String = client.recvUntil('|', 32);
+    if !string.eq(firstPart, "a|") {
+        server.close();
+        client.close();
+        listener.close();
+        return 34;
+    }
+
+    var secondPart: String = client.recvExact(1);
+    if !string.eq(secondPart, "b") {
+        server.close();
+        client.close();
+        listener.close();
+        return 35;
+    }
+
+    // direct wrappers still work
+    if network.send(client.fdValue(), "z") != 1 {
+        server.close();
+        client.close();
+        listener.close();
+        return 36;
+    }
+
+    var gotOne: String = network.recv(server.fdValue(), 1);
+    if !string.eq(gotOne, "z") {
+        server.close();
+        client.close();
+        listener.close();
+        return 37;
+    }
+
+    // Close lifecycle
+    if server.close() != 0 {
+        client.close();
+        listener.close();
+        return 38;
+    }
+
+    if server.isOpen() {
+        client.close();
+        listener.close();
+        return 39;
+    }
+
+    if client.close() != 0 {
+        listener.close();
+        return 40;
+    }
+
+    if client.isOpen() {
+        listener.close();
+        return 41;
+    }
+
+    if listener.close() != 0 {
+        return 42;
+    }
+
+    if listener.isOpen() {
+        return 43;
+    }
+
+    // Closing already-closed objects should be no-op success
+    if server.close() != 0 {
+        return 44;
+    }
+
+    if client.close() != 0 {
+        return 45;
+    }
+
+    if listener.close() != 0 {
+        return 46;
+    }
+
+    return 0;
+}
