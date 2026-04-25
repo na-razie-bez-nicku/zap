@@ -6,8 +6,8 @@
 - [x] bit shifts
 - [x] hex values
 - [ ] improvment over std lib
-    - [ ] std/network
-    - [ ] std/json
+    - [x] std/network
+    - [x] std/json
     - [ ] std/toml
     - [ ] more functions in std/fs
     - [x] std/map (HashMap)
