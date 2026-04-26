@@ -56,6 +56,10 @@ public:
   void visit(sema::BoundNewExpression &node) override;
   void visit(sema::BoundWeakLockExpression &node) override;
   void visit(sema::BoundWeakAliveExpression &node) override;
+  void visit(sema::BoundTryExpression &node) override;
+  void visit(sema::BoundFallbackExpression &node) override;
+  void visit(sema::BoundFailableHandleExpression &node) override;
+  void visit(sema::BoundFailStatement &node) override;
 
 private:
   llvm::LLVMContext ctx_;

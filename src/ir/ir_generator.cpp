@@ -4,6 +4,63 @@
 
 namespace zir {
 
+bool BoundIRGenerator::isFailableType(const std::shared_ptr<Type> &type) const {
+  if (!type || type->getKind() != TypeKind::Record) {
+    return false;
+  }
+
+  auto record = std::static_pointer_cast<RecordType>(type);
+  const auto &fields = record->getFields();
+  return fields.size() == 3 && fields[0].name == "ok" &&
+         fields[1].name == "value" && fields[2].name == "error";
+}
+
+std::shared_ptr<Type>
+BoundIRGenerator::failableValueType(const std::shared_ptr<Type> &type) const {
+  if (!isFailableType(type)) {
+    return nullptr;
+  }
+  auto record = std::static_pointer_cast<RecordType>(type);
+  return record->getFields()[1].type;
+}
+
+std::shared_ptr<Type>
+BoundIRGenerator::failableErrorType(const std::shared_ptr<Type> &type) const {
+  if (!isFailableType(type)) {
+    return nullptr;
+  }
+  auto record = std::static_pointer_cast<RecordType>(type);
+  return record->getFields()[2].type;
+}
+
+std::shared_ptr<Value>
+BoundIRGenerator::emitFailableFieldLoad(const std::shared_ptr<Value> &value,
+                                        int fieldIndex,
+                                        const std::shared_ptr<Type> &fieldType) {
+  auto fieldAddr = createRegister(std::make_shared<PointerType>(fieldType));
+  currentBlock_->addInstruction(
+      std::make_unique<GetElementPtrInst>(fieldAddr, value, fieldIndex));
+  auto loaded = createRegister(fieldType);
+  currentBlock_->addInstruction(std::make_unique<LoadInst>(loaded, fieldAddr));
+  return loaded;
+}
+
+std::shared_ptr<Value>
+BoundIRGenerator::emitFailableOk(const std::shared_ptr<Value> &value) {
+  return emitFailableFieldLoad(
+      value, 0, std::make_shared<PrimitiveType>(TypeKind::Bool));
+}
+
+std::shared_ptr<Value>
+BoundIRGenerator::emitFailableValue(const std::shared_ptr<Value> &value) {
+  return emitFailableFieldLoad(value, 1, failableValueType(value->getType()));
+}
+
+std::shared_ptr<Value>
+BoundIRGenerator::emitFailableError(const std::shared_ptr<Value> &value) {
+  return emitFailableFieldLoad(value, 2, failableErrorType(value->getType()));
+}
+
 std::unique_ptr<Module> BoundIRGenerator::generate(sema::BoundRootNode &root) {
   module_ = std::make_unique<Module>("zap_module");
   globalSymbolMap_.clear();
@@ -180,6 +237,52 @@ void BoundIRGenerator::visit(sema::BoundReturnStatement &node) {
     valueStack_.pop();
   }
   currentBlock_->addInstruction(std::make_unique<ReturnInst>(val));
+}
+
+void BoundIRGenerator::visit(sema::BoundFailStatement &node) {
+  if (!currentFunction_) {
+    return;
+  }
+
+  std::shared_ptr<Value> errValue = nullptr;
+  if (node.errorExpression) {
+    node.errorExpression->accept(*this);
+    errValue = valueStack_.top();
+    valueStack_.pop();
+  }
+
+  auto failableType = node.propagatedType;
+  auto valueType = failableValueType(failableType);
+  auto errorType = failableErrorType(failableType);
+
+  auto allocaReg = createRegister(std::make_shared<PointerType>(failableType));
+  currentBlock_->addInstruction(std::make_unique<AllocaInst>(allocaReg, failableType));
+
+  auto okAddr = createRegister(std::make_shared<PointerType>(
+      std::make_shared<PrimitiveType>(TypeKind::Bool)));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(okAddr, allocaReg, 0));
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(
+      std::make_shared<Constant>("false",
+                                 std::make_shared<PrimitiveType>(TypeKind::Bool)),
+      okAddr));
+
+  auto valueAddr = createRegister(std::make_shared<PointerType>(valueType));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(valueAddr, allocaReg, 1));
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(
+      std::make_shared<Constant>("0", valueType), valueAddr));
+
+  auto errAddr = createRegister(std::make_shared<PointerType>(errorType));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(errAddr, allocaReg, 2));
+  if (errValue) {
+    currentBlock_->addInstruction(std::make_unique<StoreInst>(errValue, errAddr));
+  } else {
+    currentBlock_->addInstruction(std::make_unique<StoreInst>(
+        std::make_shared<Constant>("0", errorType), errAddr));
+  }
+
+  auto loaded = createRegister(failableType);
+  currentBlock_->addInstruction(std::make_unique<LoadInst>(loaded, allocaReg));
+  currentBlock_->addInstruction(std::make_unique<ReturnInst>(loaded));
 }
 
 void BoundIRGenerator::visit(sema::BoundAssignment &node) {
@@ -832,6 +935,211 @@ void BoundIRGenerator::visit(sema::BoundStructLiteral &node) {
 
   auto result = createRegister(recordType);
   currentBlock_->addInstruction(std::make_unique<LoadInst>(result, allocaReg));
+  valueStack_.push(result);
+}
+
+void BoundIRGenerator::visit(sema::BoundTryExpression &node) {
+  node.expression->accept(*this);
+  if (valueStack_.empty()) {
+    return;
+  }
+
+  auto failableValue = valueStack_.top();
+  valueStack_.pop();
+
+  auto okValue = emitFailableOk(failableValue);
+  auto successLabel = createBlockLabel("try.ok");
+  auto failLabel = createBlockLabel("try.fail");
+  auto mergeLabel = createBlockLabel("try.merge");
+
+  currentBlock_->addInstruction(
+      std::make_unique<CondBranchInst>(okValue, successLabel, failLabel));
+
+  auto successBlock = std::make_unique<BasicBlock>(successLabel);
+  auto *successBlockPtr = successBlock.get();
+  currentFunction_->addBlock(std::move(successBlock));
+  currentBlock_ = successBlockPtr;
+
+  auto successValue = emitFailableValue(failableValue);
+  std::string successFrom = currentBlock_->label;
+  currentBlock_->addInstruction(std::make_unique<BranchInst>(mergeLabel));
+
+  auto failBlock = std::make_unique<BasicBlock>(failLabel);
+  auto *failBlockPtr = failBlock.get();
+  currentFunction_->addBlock(std::move(failBlock));
+  currentBlock_ = failBlockPtr;
+
+  auto failErr = emitFailableError(failableValue);
+
+  auto propagatedType = node.propagatedType;
+  auto propagatedValueType = failableValueType(propagatedType);
+  auto propagatedErrorType = failableErrorType(propagatedType);
+
+  auto propagatedAlloca =
+      createRegister(std::make_shared<PointerType>(propagatedType));
+  currentBlock_->addInstruction(
+      std::make_unique<AllocaInst>(propagatedAlloca, propagatedType));
+
+  auto okAddr = createRegister(std::make_shared<PointerType>(
+      std::make_shared<PrimitiveType>(TypeKind::Bool)));
+  currentBlock_->addInstruction(
+      std::make_unique<GetElementPtrInst>(okAddr, propagatedAlloca, 0));
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(
+      std::make_shared<Constant>(
+          "false", std::make_shared<PrimitiveType>(TypeKind::Bool)),
+      okAddr));
+
+  auto valueAddr =
+      createRegister(std::make_shared<PointerType>(propagatedValueType));
+  currentBlock_->addInstruction(
+      std::make_unique<GetElementPtrInst>(valueAddr, propagatedAlloca, 1));
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(
+      std::make_shared<Constant>("0", propagatedValueType), valueAddr));
+
+  auto errAddr = createRegister(std::make_shared<PointerType>(propagatedErrorType));
+  currentBlock_->addInstruction(
+      std::make_unique<GetElementPtrInst>(errAddr, propagatedAlloca, 2));
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(failErr, errAddr));
+
+  auto propagatedValue = createRegister(propagatedType);
+  currentBlock_->addInstruction(
+      std::make_unique<LoadInst>(propagatedValue, propagatedAlloca));
+  currentBlock_->addInstruction(std::make_unique<ReturnInst>(propagatedValue));
+
+  auto mergeBlock = std::make_unique<BasicBlock>(mergeLabel);
+  auto *mergeBlockPtr = mergeBlock.get();
+  currentFunction_->addBlock(std::move(mergeBlock));
+  currentBlock_ = mergeBlockPtr;
+
+  auto result = createRegister(node.type);
+  std::vector<std::pair<std::string, std::shared_ptr<Value>>> incoming;
+  incoming.push_back({successFrom, successValue});
+  currentBlock_->addInstruction(std::make_unique<PhiInst>(result, incoming));
+  valueStack_.push(result);
+}
+
+void BoundIRGenerator::visit(sema::BoundFallbackExpression &node) {
+  node.expression->accept(*this);
+  if (valueStack_.empty()) {
+    return;
+  }
+
+  auto failableValue = valueStack_.top();
+  valueStack_.pop();
+
+  auto okValue = emitFailableOk(failableValue);
+  auto successLabel = createBlockLabel("or.ok");
+  auto fallbackLabel = createBlockLabel("or.fallback");
+  auto mergeLabel = createBlockLabel("or.merge");
+
+  currentBlock_->addInstruction(
+      std::make_unique<CondBranchInst>(okValue, successLabel, fallbackLabel));
+
+  auto successBlock = std::make_unique<BasicBlock>(successLabel);
+  auto *successBlockPtr = successBlock.get();
+  currentFunction_->addBlock(std::move(successBlock));
+  currentBlock_ = successBlockPtr;
+  auto successValue = emitFailableValue(failableValue);
+  std::string successFrom = currentBlock_->label;
+  currentBlock_->addInstruction(std::make_unique<BranchInst>(mergeLabel));
+
+  auto fallbackBlock = std::make_unique<BasicBlock>(fallbackLabel);
+  auto *fallbackBlockPtr = fallbackBlock.get();
+  currentFunction_->addBlock(std::move(fallbackBlock));
+  currentBlock_ = fallbackBlockPtr;
+  node.fallback->accept(*this);
+  auto fallbackValue = valueStack_.top();
+  valueStack_.pop();
+  std::string fallbackFrom = currentBlock_->label;
+  currentBlock_->addInstruction(std::make_unique<BranchInst>(mergeLabel));
+
+  auto mergeBlock = std::make_unique<BasicBlock>(mergeLabel);
+  auto *mergeBlockPtr = mergeBlock.get();
+  currentFunction_->addBlock(std::move(mergeBlock));
+  currentBlock_ = mergeBlockPtr;
+
+  auto result = createRegister(node.type);
+  std::vector<std::pair<std::string, std::shared_ptr<Value>>> incoming;
+  incoming.push_back({successFrom, successValue});
+  incoming.push_back({fallbackFrom, fallbackValue});
+  currentBlock_->addInstruction(std::make_unique<PhiInst>(result, incoming));
+  valueStack_.push(result);
+}
+
+void BoundIRGenerator::visit(sema::BoundFailableHandleExpression &node) {
+  node.expression->accept(*this);
+  if (valueStack_.empty()) {
+    return;
+  }
+
+  auto failableValue = valueStack_.top();
+  valueStack_.pop();
+
+  auto okValue = emitFailableOk(failableValue);
+  auto successLabel = createBlockLabel("orerr.ok");
+  auto handlerLabel = createBlockLabel("orerr.handler");
+  auto mergeLabel = createBlockLabel("orerr.merge");
+
+  currentBlock_->addInstruction(
+      std::make_unique<CondBranchInst>(okValue, successLabel, handlerLabel));
+
+  auto successBlock = std::make_unique<BasicBlock>(successLabel);
+  auto *successBlockPtr = successBlock.get();
+  currentFunction_->addBlock(std::move(successBlock));
+  currentBlock_ = successBlockPtr;
+  auto successValue = emitFailableValue(failableValue);
+  std::string successFrom = currentBlock_->label;
+  currentBlock_->addInstruction(std::make_unique<BranchInst>(mergeLabel));
+
+  auto handlerBlock = std::make_unique<BasicBlock>(handlerLabel);
+  auto *handlerBlockPtr = handlerBlock.get();
+  currentFunction_->addBlock(std::move(handlerBlock));
+  currentBlock_ = handlerBlockPtr;
+
+  auto errValue = emitFailableError(failableValue);
+  if (node.errorSymbol) {
+    auto errAlloca = createRegister(std::make_shared<PointerType>(node.errorSymbol->type));
+    currentBlock_->addInstruction(
+        std::make_unique<AllocaInst>(errAlloca, node.errorSymbol->type));
+    currentBlock_->addInstruction(std::make_unique<StoreInst>(errValue, errAlloca));
+    symbolMap_[node.errorSymbol] = errAlloca;
+  }
+
+  if (node.handler) {
+    node.handler->accept(*this);
+  }
+
+  std::shared_ptr<Value> handlerValue = nullptr;
+  if (node.handler && node.handler->result) {
+    handlerValue = valueStack_.top();
+    valueStack_.pop();
+  } else {
+    handlerValue = std::make_shared<Constant>("0", node.type);
+  }
+
+  bool handlerReachesMerge =
+      currentBlock_->instructions.empty() ||
+      currentBlock_->instructions.back()->getOpCode() != OpCode::Ret;
+  std::string handlerFrom = currentBlock_->label;
+  if (handlerReachesMerge) {
+    currentBlock_->addInstruction(std::make_unique<BranchInst>(mergeLabel));
+  }
+
+  auto mergeBlock = std::make_unique<BasicBlock>(mergeLabel);
+  auto *mergeBlockPtr = mergeBlock.get();
+  currentFunction_->addBlock(std::move(mergeBlock));
+  currentBlock_ = mergeBlockPtr;
+
+  if (!handlerReachesMerge) {
+    valueStack_.push(successValue);
+    return;
+  }
+
+  auto result = createRegister(node.type);
+  std::vector<std::pair<std::string, std::shared_ptr<Value>>> incoming;
+  incoming.push_back({successFrom, successValue});
+  incoming.push_back({handlerFrom, handlerValue});
+  currentBlock_->addInstruction(std::make_unique<PhiInst>(result, incoming));
   valueStack_.push(result);
 }
 

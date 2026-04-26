@@ -1,0 +1,19 @@
+@error
+enum MathError {
+    DivisionByZero,
+}
+
+@error
+enum ParseError {
+    InvalidDigit,
+}
+
+fun divide(a: Int, b: Int) Int!MathError {
+    if b == 0 { fail MathError.DivisionByZero; }
+    return a / b;
+}
+
+fun parse() Int!ParseError {
+    var x: Int = divide(10, 0)?;
+    return x;
+}

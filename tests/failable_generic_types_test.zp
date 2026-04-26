@@ -1,0 +1,71 @@
+@error
+struct BoxError<T> {
+    payload: T,
+}
+
+@error
+struct MessageError {
+    message: String,
+}
+
+fun passthroughInt(value: Int, failNow: Bool) Int!BoxError<Int> {
+    if failNow {
+        fail BoxError<Int>{ payload: 41 };
+    }
+    return value;
+}
+
+fun bumpWithStructError(value: Int, failNow: Bool) Int!BoxError<Int> {
+    var v: Int = passthroughInt(value, failNow)?;
+    return v + 1;
+}
+
+fun stringSource(failNow: Bool) Int!MessageError {
+    if failNow {
+        fail MessageError{ message: "boom" };
+    }
+    return 9;
+}
+
+fun stringSink(failNow: Bool) Int!MessageError {
+    var v: Int = stringSource(failNow)?;
+    return v + 1;
+}
+
+fun main() Int {
+    // Success through generic @error struct path and ? propagation.
+    var a: Int = bumpWithStructError(10, false) or 0; // 11
+    if a != 11 {
+        return 1;
+    }
+
+    // Fallback with generic @error struct.
+    var b: Int = bumpWithStructError(10, true) or 5; // 5
+    if b != 5 {
+        return 2;
+    }
+
+    // Local handling with generic @error struct and typed payload access.
+    var c: Int = bumpWithStructError(10, true) or err {
+        err.payload + 1 // 42
+    };
+    if c != 42 {
+        return 3;
+    }
+
+    // Success through non-generic @error struct and ? propagation.
+    var d: Int = stringSink(false) or 0; // 10
+    if d != 10 {
+        return 4;
+    }
+
+    // Local handling with non-generic @error struct.
+    var e: Int = stringSink(true) or err {
+        12
+    };
+    if e != 12 {
+        return 5;
+    }
+
+    return 0;
+}

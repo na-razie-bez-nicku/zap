@@ -81,6 +81,7 @@ enum TokenType {
   WEAK,
   WHERE,
   IFTYPE,
+  FAIL,
 };
 
 /// @brief Contains in-file related information like line, column, offset, and
@@ -235,6 +236,8 @@ inline std::string tokenTypeToString(TokenType type) {
     return "where";
   case TokenType::IFTYPE:
     return "iftype";
+  case TokenType::FAIL:
+    return "fail";
   case TokenType::NEW:
     return "new";
   case TokenType::WEAK:

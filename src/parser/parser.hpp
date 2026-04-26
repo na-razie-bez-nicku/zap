@@ -9,6 +9,7 @@
 #include "../ast/enum_decl.hpp"
 #include "../ast/expr_node.hpp"
 #include "../ast/ext_decl.hpp"
+#include "../ast/failable_nodes.hpp"
 #include "../ast/fun_decl.hpp"
 #include "../ast/if_node.hpp"
 #include "../ast/import_node.hpp"
@@ -88,6 +89,7 @@ namespace zap
     std::unique_ptr<WhileNode> parseWhile();
     std::unique_ptr<ReturnNode> parseReturnStmt();
     std::unique_ptr<ExpressionNode> parseExpression();
+    std::unique_ptr<ExpressionNode> parseFailableExpression();
     std::unique_ptr<ExpressionNode> parseCastExpression();
     std::unique_ptr<ExpressionNode> parseTernaryExpression();
     std::unique_ptr<ExpressionNode> parseBinaryExpression(int minPrecedence);
@@ -106,8 +108,10 @@ namespace zap
     std::unique_ptr<StructLiteralNode> parseStructLiteral(std::unique_ptr<TypeNode> type);
     std::unique_ptr<BreakNode> parseBreak();
     std::unique_ptr<ContinueNode> parseContinue();
+    std::unique_ptr<FailNode> parseFail();
     std::vector<std::string> parseQualifiedIdentifier();
     bool isTypeStartToken(TokenType type) const;
+    bool isTryPostfixContext(TokenType type) const;
     bool isGenericCallStart() const;
     bool isGenericStructLiteralStart() const;
     std::unique_ptr<TypeNode>

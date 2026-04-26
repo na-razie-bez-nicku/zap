@@ -54,12 +54,10 @@ Zap solves this problem thanks to its Cycle Collector, i.e. it is actually a gar
 
 ## Error Handling
 
-> [!WARNING]
-> Not yet implemented.
-
 Zap uses **failable functions**: functions that can fail declare it explicitly in their return type.
 
 ```zap
+@error
 enum MathError { DivisionByZero, Overflow }
 
 fun divide(a: Int, b: Int) Int!MathError {

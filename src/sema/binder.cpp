@@ -12,11 +12,63 @@
 
 namespace sema {
 namespace {
+std::string sanitizeTypeName(const std::string &value);
+constexpr const char *kFailablePrefix = "__zap_failable_";
+
 bool isStringType(const std::shared_ptr<zir::Type> &type) {
   return type &&
          (type->getKind() == zir::TypeKind::Record ||
           type->getKind() == zir::TypeKind::Class) &&
          static_cast<zir::RecordType *>(type.get())->getName() == "String";
+}
+
+bool isFailableType(const std::shared_ptr<zir::Type> &type) {
+  if (!type || type->getKind() != zir::TypeKind::Record) {
+    return false;
+  }
+
+  auto record = std::static_pointer_cast<zir::RecordType>(type);
+  const auto &name = record->getName();
+  if (name.rfind(kFailablePrefix, 0) != 0) {
+    return false;
+  }
+
+  const auto &fields = record->getFields();
+  return fields.size() == 3 && fields[0].name == "ok" &&
+         fields[1].name == "value" && fields[2].name == "error";
+}
+
+std::shared_ptr<zir::Type>
+failableValueType(const std::shared_ptr<zir::Type> &type) {
+  if (!isFailableType(type)) {
+    return nullptr;
+  }
+  auto record = std::static_pointer_cast<zir::RecordType>(type);
+  return record->getFields()[1].type;
+}
+
+std::shared_ptr<zir::Type>
+failableErrorType(const std::shared_ptr<zir::Type> &type) {
+  if (!isFailableType(type)) {
+    return nullptr;
+  }
+  auto record = std::static_pointer_cast<zir::RecordType>(type);
+  return record->getFields()[2].type;
+}
+
+std::shared_ptr<zir::RecordType>
+makeFailableType(const std::shared_ptr<zir::Type> &valueType,
+                 const std::shared_ptr<zir::Type> &errorType) {
+  auto suffix = sanitizeTypeName((valueType ? valueType->toString() : "<?>") +
+                                 std::string("$") +
+                                 (errorType ? errorType->toString() : "<?>"));
+  auto typeName = std::string(kFailablePrefix) + suffix;
+  auto type = std::make_shared<zir::RecordType>(typeName, typeName);
+  type->addField("ok",
+                 std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool));
+  type->addField("value", valueType);
+  type->addField("error", errorType);
+  return type;
 }
 
 std::string sanitizeTypeName(const std::string &value) {
@@ -76,6 +128,75 @@ bool isVariadicViewType(const std::shared_ptr<zir::Type> &type) {
          static_cast<zir::RecordType *>(type.get())
                  ->getName()
                  .rfind("__zap_varargs_", 0) == 0;
+}
+
+std::unique_ptr<BoundExpression>
+makeDefaultValueExpr(const std::shared_ptr<zir::Type> &type) {
+  if (!type) {
+    return std::make_unique<BoundLiteral>(
+        "0", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Void));
+  }
+
+  switch (type->getKind()) {
+  case zir::TypeKind::Bool:
+    return std::make_unique<BoundLiteral>(
+        "false", std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool));
+  case zir::TypeKind::Float:
+  case zir::TypeKind::Float32:
+  case zir::TypeKind::Float64:
+    return std::make_unique<BoundLiteral>("0.0", type);
+  case zir::TypeKind::Pointer:
+  case zir::TypeKind::NullPtr:
+  case zir::TypeKind::Class:
+    return std::make_unique<BoundLiteral>(
+        "0", std::make_shared<zir::PrimitiveType>(zir::TypeKind::NullPtr));
+  case zir::TypeKind::Record:
+    if (isFailableType(type)) {
+      auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
+      auto valueType = failableValueType(type);
+      auto errorType = failableErrorType(type);
+      std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>>
+          fields;
+      fields.push_back(
+          {"ok", std::make_unique<BoundLiteral>("false", okType)});
+      fields.push_back({"value", makeDefaultValueExpr(valueType)});
+      fields.push_back({"error", makeDefaultValueExpr(errorType)});
+      return std::make_unique<BoundStructLiteral>(std::move(fields), type);
+    }
+    return std::make_unique<BoundLiteral>("0", type);
+  default:
+    if (type->isInteger() || type->getKind() == zir::TypeKind::Enum) {
+      return std::make_unique<BoundLiteral>("0", type);
+    }
+    return std::make_unique<BoundLiteral>("0", type);
+  }
+}
+
+std::unique_ptr<BoundExpression>
+makeFailableValueExpr(std::unique_ptr<BoundExpression> valueExpr,
+                      const std::shared_ptr<zir::Type> &failableType) {
+  auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
+  auto valueType = failableValueType(failableType);
+  auto errorType = failableErrorType(failableType);
+
+  std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>> fields;
+  fields.push_back({"ok", std::make_unique<BoundLiteral>("true", okType)});
+  fields.push_back({"value", std::move(valueExpr)});
+  fields.push_back({"error", makeDefaultValueExpr(errorType)});
+  return std::make_unique<BoundStructLiteral>(std::move(fields), failableType);
+}
+
+std::unique_ptr<BoundExpression>
+makeFailableErrorExpr(std::unique_ptr<BoundExpression> errorExpr,
+                      const std::shared_ptr<zir::Type> &failableType) {
+  auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
+  auto valueType = failableValueType(failableType);
+
+  std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>> fields;
+  fields.push_back({"ok", std::make_unique<BoundLiteral>("false", okType)});
+  fields.push_back({"value", makeDefaultValueExpr(valueType)});
+  fields.push_back({"error", std::move(errorExpr)});
+  return std::make_unique<BoundStructLiteral>(std::move(fields), failableType);
 }
 
 std::vector<std::string> splitQualified(const std::string &value) {
@@ -1735,7 +1856,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
                                                    : module.info->linkPath,
                      recordDecl->name_),
           module.info->moduleName, recordDecl->visibility_, false);
-      validateAndApplyTypeAttributes(*recordDecl, symbol, false);
+      validateAndApplyTypeAttributes(*recordDecl, symbol, true);
       for (const auto &genericParam : recordDecl->genericParams_) {
         if (genericParam) {
           symbol->genericParameterNames.push_back(genericParam->typeName);
@@ -1770,7 +1891,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
       }
       classTypeDeclarationNodes_[symbol.get()] = classDecl;
       typeDeclarationModuleIds_[symbol.get()] = module.info->moduleId;
-      validateAndApplyTypeAttributes(*classDecl, symbol, false);
+      validateAndApplyTypeAttributes(*classDecl, symbol, true);
       if (!module.scope->declare(classDecl->name_, symbol)) {
         error(classDecl->span,
               "Type '" + classDecl->name_ + "' already declared.");
@@ -3007,7 +3128,23 @@ void Binder::visit(ReturnNode &node) {
     auto actualType =
         expr ? expr->type
              : std::make_shared<zir::PrimitiveType>(zir::TypeKind::Void);
-    if (!canConvert(actualType, expectedType)) {
+
+    if (isFailableType(expectedType) && !isFailableType(actualType)) {
+      auto expectedValueType = failableValueType(expectedType);
+      if (!canConvert(actualType, expectedValueType)) {
+        error(node.span, "Function '" + currentFunction_->name +
+                             "' expects return type '" +
+                             renderTypeForUser(expectedType) +
+                             "', but received '" +
+                             renderTypeForUser(actualType) + "'");
+      } else if (expr) {
+        expr = wrapInCast(std::move(expr), expectedValueType);
+        expr = makeFailableValueExpr(std::move(expr), expectedType);
+      } else {
+        expr = makeFailableValueExpr(makeDefaultValueExpr(expectedValueType),
+                                     expectedType);
+      }
+    } else if (!canConvert(actualType, expectedType)) {
       error(node.span, "Function '" + currentFunction_->name +
                            "' expects return type '" +
                            renderTypeForUser(expectedType) + "', but received '" +
@@ -3321,6 +3458,156 @@ void Binder::visit(CastExpr &node) {
 
   expressionStack_.push(
       std::make_unique<BoundCast>(std::move(expr), targetType));
+}
+
+void Binder::visit(TryExpr &node) {
+  node.expression_->accept(*this);
+  if (expressionStack_.empty()) {
+    return;
+  }
+
+  auto expression = std::move(expressionStack_.top());
+  expressionStack_.pop();
+
+  if (!isFailableType(expression->type)) {
+    error(node.span, "Operator '?' requires failable expression type, got '" +
+                         renderTypeForUser(expression->type) + "'");
+    return;
+  }
+
+  auto valueType = failableValueType(expression->type);
+  auto errorType = failableErrorType(expression->type);
+
+  if (!currentFunction_ || !isFailableType(currentFunction_->returnType)) {
+    error(node.span,
+          "Operator '?' can only be used inside functions returning failable type.");
+    return;
+  }
+
+  auto currentErrorType = failableErrorType(currentFunction_->returnType);
+  if (!currentErrorType || !errorType ||
+      currentErrorType->toString() != errorType->toString()) {
+    error(node.span,
+          "Cannot propagate error type '" + renderTypeForUser(errorType) +
+              "' into function error type '" +
+              renderTypeForUser(currentErrorType) +
+              "': exact error type match is required for '?'.");
+    return;
+  }
+
+  expressionStack_.push(std::make_unique<BoundTryExpression>(
+      std::move(expression), valueType, currentFunction_->returnType, errorType));
+}
+
+void Binder::visit(FallbackExpr &node) {
+  node.expression_->accept(*this);
+  if (expressionStack_.empty()) {
+    return;
+  }
+
+  auto expression = std::move(expressionStack_.top());
+  expressionStack_.pop();
+
+  if (!isFailableType(expression->type)) {
+    error(node.span, "Operator 'or' requires failable expression type, got '" +
+                         renderTypeForUser(expression->type) + "'");
+    return;
+  }
+
+  auto valueType = failableValueType(expression->type);
+  auto errorType = failableErrorType(expression->type);
+
+  auto fallback = bindExpressionWithExpected(node.fallback_.get(), valueType);
+  if (!fallback) {
+    return;
+  }
+
+  if (!canConvert(fallback->type, valueType)) {
+    error(node.fallback_->span, "Fallback expression type '" +
+                                    renderTypeForUser(fallback->type) +
+                                    "' is not compatible with '" +
+                                    renderTypeForUser(valueType) + "'");
+    return;
+  }
+  fallback = wrapInCast(std::move(fallback), valueType);
+
+  expressionStack_.push(std::make_unique<BoundFallbackExpression>(
+      std::move(expression), std::move(fallback), valueType, errorType));
+}
+
+void Binder::visit(FailableHandleExpr &node) {
+  node.expression_->accept(*this);
+  if (expressionStack_.empty()) {
+    return;
+  }
+
+  auto expression = std::move(expressionStack_.top());
+  expressionStack_.pop();
+
+  if (!isFailableType(expression->type)) {
+    error(node.span, "Operator 'or <name> { ... }' requires failable expression type, got '" +
+                         renderTypeForUser(expression->type) + "'");
+    return;
+  }
+
+  auto valueType = failableValueType(expression->type);
+  auto errorType = failableErrorType(expression->type);
+
+  pushScope();
+  auto errorSymbol = std::make_shared<VariableSymbol>(
+      node.errorName_, errorType, false, false, node.errorName_,
+      modules_[currentModuleId_].info->moduleName, Visibility::Private);
+  if (!currentScope_->declare(node.errorName_, errorSymbol)) {
+    error(node.span, "Handler variable '" + node.errorName_ +
+                         "' is already declared in this scope.");
+  }
+
+  auto handler = bindBody(node.handler_.get(), false);
+  popScope();
+
+  std::shared_ptr<zir::Type> handlerResultType = valueType;
+  if (handler && handler->result) {
+    if (!canConvert(handler->result->type, valueType)) {
+      error(node.span, "Handler result type '" +
+                           renderTypeForUser(handler->result->type) +
+                           "' is not compatible with '" +
+                           renderTypeForUser(valueType) + "'");
+      return;
+    }
+    handler->result = wrapInCast(std::move(handler->result), valueType);
+    handlerResultType = valueType;
+  }
+
+  expressionStack_.push(std::make_unique<BoundFailableHandleExpression>(
+      std::move(expression), errorSymbol, std::move(handler), handlerResultType,
+      errorType));
+}
+
+void Binder::visit(FailNode &node) {
+  if (!currentFunction_ || !isFailableType(currentFunction_->returnType)) {
+    error(node.span, "'fail' can only be used inside failable functions.");
+    return;
+  }
+
+  auto propagatedType = currentFunction_->returnType;
+  auto expectedErrorType = failableErrorType(propagatedType);
+
+  auto errExpr = bindExpressionWithExpected(node.errorValue_.get(), expectedErrorType);
+  if (!errExpr) {
+    return;
+  }
+
+  if (!canConvert(errExpr->type, expectedErrorType)) {
+    error(node.errorValue_->span, "Cannot fail with error type '" +
+                                      renderTypeForUser(errExpr->type) +
+                                      "', expected '" +
+                                      renderTypeForUser(expectedErrorType) + "'");
+    return;
+  }
+  errExpr = wrapInCast(std::move(errExpr), expectedErrorType);
+
+  statementStack_.push(std::make_unique<BoundFailStatement>(
+      std::move(errExpr), propagatedType, expectedErrorType));
 }
 
 void Binder::visit(ConstId &node) {
@@ -4474,6 +4761,37 @@ std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode) {
     return mapType(*typeNode.baseType);
   }
 
+  if (typeNode.isFailable) {
+    if (!typeNode.baseType || !typeNode.errorType) {
+      error(typeNode.span, "Invalid failable type declaration.");
+      return nullptr;
+    }
+
+    auto valueType = mapType(*typeNode.baseType);
+    auto errorType = mapType(*typeNode.errorType);
+
+    if (!valueType || !errorType) {
+      return nullptr;
+    }
+
+    if (!typeNode.errorType->qualifiers.empty() || !typeNode.errorType->typeName.empty()) {
+      std::vector<std::string> errParts = typeNode.errorType->qualifiers;
+      errParts.push_back(typeNode.errorType->typeName);
+      auto errSymbol =
+          resolveQualifiedSymbol(errParts, typeNode.errorType->span, SymbolKind::Type);
+      if (errSymbol && errSymbol->getKind() == SymbolKind::Type) {
+        auto errTypeSymbol = std::static_pointer_cast<TypeSymbol>(errSymbol);
+        if (!errTypeSymbol->isErrorType) {
+          error(typeNode.errorType->span,
+                "Type '" + typeNode.errorType->qualifiedName() +
+                    "' used as failable error type must be annotated with @error.");
+        }
+      }
+    }
+
+    return makeFailableType(valueType, errorType);
+  }
+
   if (!activeGenericBindingsStack_.empty() && typeNode.qualifiers.empty() &&
       typeNode.genericArgs.empty()) {
     const auto &bindings = activeGenericBindingsStack_.back();
@@ -4556,7 +4874,15 @@ std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode) {
       weakType->setWeak(true);
       return weakType;
     }
-    return typeSymbol->type;
+
+    auto resolvedType = typeSymbol->type;
+    if (typeNode.errorType && !typeSymbol->isErrorType) {
+      error(typeNode.span,
+            "Type '" + typeNode.qualifiedName() +
+                "' used as failable error type must be annotated with "
+                "@error.");
+    }
+    return resolvedType;
   }
 
   return nullptr;
@@ -4854,6 +5180,15 @@ bool Binder::canConvert(std::shared_ptr<zir::Type> from,
              dataType->getBaseType()->toString();
     }
   }
+  if (isFailableType(from) && isFailableType(to)) {
+    auto fromValueType = failableValueType(from);
+    auto fromErrorType = failableErrorType(from);
+    auto toValueType = failableValueType(to);
+    auto toErrorType = failableErrorType(to);
+    return canConvert(fromValueType, toValueType) &&
+           canConvert(fromErrorType, toErrorType);
+  }
+
   if (isNumeric(from) && isNumeric(to))
     return true;
   return false;

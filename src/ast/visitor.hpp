@@ -28,6 +28,10 @@ class ParameterNode;
 class TypeNode;
 class IndexAccessNode;
 class UnsafeBlockNode;
+class TryExpr;
+class FallbackExpr;
+class FailableHandleExpr;
+class FailNode;
 
 class ExpressionNode;
 class BinExpr;
@@ -79,6 +83,7 @@ struct Visitor
   virtual void visit(TypeNode &) {}
   virtual void visit(IndexAccessNode &) {}
   virtual void visit(UnsafeBlockNode &) {}
+  virtual void visit(FailNode &) {}
 
   virtual void visit(ExpressionNode &) {}
   virtual void visit(BinExpr &) {}
@@ -89,6 +94,9 @@ struct Visitor
   virtual void visit(ArrayLiteralNode &) {}
   virtual void visit(AssignNode &) {}
   virtual void visit(NewExpr &) {}
+  virtual void visit(TryExpr &) {}
+  virtual void visit(FallbackExpr &) {}
+  virtual void visit(FailableHandleExpr &) {}
 
   virtual void visit(ConstInt &) {}
   virtual void visit(ConstFloat &) {}

@@ -17,6 +17,8 @@ public:
   bool isArray = false;
   bool isVarArgs = false;
   bool isWeak = false;
+  bool isFailable = false;
+  std::unique_ptr<TypeNode> errorType;
   std::unique_ptr<ExpressionNode> arraySize; // nullptr for non-array types
   std::unique_ptr<TypeNode>
       baseType; // For recursive types like arrays or pointers

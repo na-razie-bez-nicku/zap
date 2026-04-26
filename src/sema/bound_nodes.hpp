@@ -37,6 +37,10 @@ class BoundCast;
 class BoundNewExpression;
 class BoundWeakLockExpression;
 class BoundWeakAliveExpression;
+class BoundTryExpression;
+class BoundFallbackExpression;
+class BoundFailableHandleExpression;
+class BoundFailStatement;
 
 class BoundVisitor {
 public:
@@ -70,6 +74,10 @@ public:
   virtual void visit(BoundNewExpression &node) = 0;
   virtual void visit(BoundWeakLockExpression &node) = 0;
   virtual void visit(BoundWeakAliveExpression &node) = 0;
+  virtual void visit(BoundTryExpression &node) = 0;
+  virtual void visit(BoundFallbackExpression &node) = 0;
+  virtual void visit(BoundFailableHandleExpression &node) = 0;
+  virtual void visit(BoundFailStatement &node) = 0;
 };
 
 class BoundNode {
@@ -329,6 +337,67 @@ public:
   }
 };
 
+class BoundTryExpression : public BoundExpression {
+public:
+  std::unique_ptr<BoundExpression> expression;
+  std::shared_ptr<zir::Type> propagatedType;
+  std::shared_ptr<zir::Type> errorType;
+
+  BoundTryExpression(std::unique_ptr<BoundExpression> e,
+                     std::shared_ptr<zir::Type> resultType,
+                     std::shared_ptr<zir::Type> propagated,
+                     std::shared_ptr<zir::Type> errType)
+      : BoundExpression(std::move(resultType)), expression(std::move(e)),
+        propagatedType(std::move(propagated)), errorType(std::move(errType)) {}
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+  std::unique_ptr<BoundExpression> clone() const override {
+    return std::make_unique<BoundTryExpression>(expression->clone(), type,
+                                                propagatedType, errorType);
+  }
+};
+
+class BoundFallbackExpression : public BoundExpression {
+public:
+  std::unique_ptr<BoundExpression> expression;
+  std::unique_ptr<BoundExpression> fallback;
+  std::shared_ptr<zir::Type> errorType;
+
+  BoundFallbackExpression(std::unique_ptr<BoundExpression> e,
+                          std::unique_ptr<BoundExpression> fb,
+                          std::shared_ptr<zir::Type> resultType,
+                          std::shared_ptr<zir::Type> errType)
+      : BoundExpression(std::move(resultType)), expression(std::move(e)),
+        fallback(std::move(fb)), errorType(std::move(errType)) {}
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+  std::unique_ptr<BoundExpression> clone() const override {
+    return std::make_unique<BoundFallbackExpression>(
+        expression->clone(), fallback->clone(), type, errorType);
+  }
+};
+
+class BoundFailableHandleExpression : public BoundExpression {
+public:
+  std::unique_ptr<BoundExpression> expression;
+  std::shared_ptr<VariableSymbol> errorSymbol;
+  std::unique_ptr<BoundBlock> handler;
+  std::shared_ptr<zir::Type> errorType;
+
+  BoundFailableHandleExpression(std::unique_ptr<BoundExpression> e,
+                                std::shared_ptr<VariableSymbol> errSym,
+                                std::unique_ptr<BoundBlock> h,
+                                std::shared_ptr<zir::Type> resultType,
+                                std::shared_ptr<zir::Type> errType)
+      : BoundExpression(std::move(resultType)), expression(std::move(e)),
+        errorSymbol(std::move(errSym)), handler(std::move(h)),
+        errorType(std::move(errType)) {}
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+  std::unique_ptr<BoundExpression> clone() const override {
+    return std::make_unique<BoundFailableHandleExpression>(
+        expression->clone(), errorSymbol, handler ? handler->cloneBlock() : nullptr,
+        type, errorType);
+  }
+};
+
 class BoundVariableDeclaration : public BoundStatement {
 public:
   std::shared_ptr<VariableSymbol> symbol;
@@ -353,6 +422,25 @@ public:
   std::unique_ptr<BoundStatement> cloneStatement() const override {
     return std::make_unique<BoundReturnStatement>(
         expression ? expression->clone() : nullptr);
+  }
+};
+
+class BoundFailStatement : public BoundStatement {
+public:
+  std::unique_ptr<BoundExpression> errorExpression;
+  std::shared_ptr<zir::Type> propagatedType;
+  std::shared_ptr<zir::Type> errorType;
+
+  BoundFailStatement(std::unique_ptr<BoundExpression> errExpr,
+                     std::shared_ptr<zir::Type> propagated,
+                     std::shared_ptr<zir::Type> errType)
+      : errorExpression(std::move(errExpr)),
+        propagatedType(std::move(propagated)), errorType(std::move(errType)) {}
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+  std::unique_ptr<BoundStatement> cloneStatement() const override {
+    return std::make_unique<BoundFailStatement>(
+        errorExpression ? errorExpression->clone() : nullptr, propagatedType,
+        errorType);
   }
 };
 

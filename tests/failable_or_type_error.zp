@@ -1,0 +1,15 @@
+@error
+enum MathError { DivisionByZero, Overflow }
+
+fun divide(a: Int, b: Int) Int!MathError {
+    if b == 0 {
+        fail MathError.DivisionByZero;
+    }
+    return a / b;
+}
+
+fun main() Int {
+    // ERROR: fallback must match success type Int, not Bool
+    var x: Int = divide(10, 0) or true;
+    return x;
+}

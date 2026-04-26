@@ -42,6 +42,10 @@ public:
   void visit(sema::BoundNewExpression &node) override;
   void visit(sema::BoundWeakLockExpression &node) override;
   void visit(sema::BoundWeakAliveExpression &node) override;
+  void visit(sema::BoundTryExpression &node) override;
+  void visit(sema::BoundFallbackExpression &node) override;
+  void visit(sema::BoundFailableHandleExpression &node) override;
+  void visit(sema::BoundFailStatement &node) override;
 
 private:
   std::unique_ptr<Module> module_;
@@ -62,6 +66,18 @@ private:
   bool evaluateAsAddress_ = false;
   std::shared_ptr<Value> createRegister(std::shared_ptr<Type> type);
   std::string createBlockLabel(const std::string &prefix);
+
+  bool isFailableType(const std::shared_ptr<Type> &type) const;
+  std::shared_ptr<Type>
+  failableValueType(const std::shared_ptr<Type> &type) const;
+  std::shared_ptr<Type>
+  failableErrorType(const std::shared_ptr<Type> &type) const;
+  std::shared_ptr<Value> emitFailableFieldLoad(const std::shared_ptr<Value> &value,
+                                               int fieldIndex,
+                                               const std::shared_ptr<Type> &fieldType);
+  std::shared_ptr<Value> emitFailableOk(const std::shared_ptr<Value> &value);
+  std::shared_ptr<Value> emitFailableValue(const std::shared_ptr<Value> &value);
+  std::shared_ptr<Value> emitFailableError(const std::shared_ptr<Value> &value);
 };
 
 } // namespace zir

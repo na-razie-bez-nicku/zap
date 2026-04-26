@@ -16,6 +16,7 @@
 #include "../ast/const/const_null.hpp"
 #include "../ast/const/const_string.hpp"
 #include "../ast/enum_decl.hpp"
+#include "../ast/failable_nodes.hpp"
 #include "../ast/fun_call.hpp"
 #include "../ast/fun_decl.hpp"
 #include "../ast/if_node.hpp"
@@ -123,6 +124,11 @@ public:
     return std::make_unique<ReturnNode>(std::move(value));
   }
 
+  std::unique_ptr<FailNode>
+  makeFail(std::unique_ptr<ExpressionNode> errorValue) {
+    return std::make_unique<FailNode>(std::move(errorValue));
+  }
+
   std::unique_ptr<BreakNode> makeBreak() { return std::make_unique<BreakNode>(); }
 
   std::unique_ptr<ContinueNode> makeContinue() { return std::make_unique<ContinueNode>(); }
@@ -151,6 +157,26 @@ public:
     return std::make_unique<TernaryExpr>(std::move(condition),
                                          std::move(thenExpr),
                                          std::move(elseExpr));
+  }
+
+  std::unique_ptr<TryExpr>
+  makeTryExpr(std::unique_ptr<ExpressionNode> expression) {
+    return std::make_unique<TryExpr>(std::move(expression));
+  }
+
+  std::unique_ptr<FallbackExpr>
+  makeFallbackExpr(std::unique_ptr<ExpressionNode> expression,
+                   std::unique_ptr<ExpressionNode> fallback) {
+    return std::make_unique<FallbackExpr>(std::move(expression),
+                                          std::move(fallback));
+  }
+
+  std::unique_ptr<FailableHandleExpr>
+  makeFailableHandleExpr(std::unique_ptr<ExpressionNode> expression,
+                         const std::string &errorName,
+                         std::unique_ptr<BodyNode> handler) {
+    return std::make_unique<FailableHandleExpr>(
+        std::move(expression), errorName, std::move(handler));
   }
 
   std::unique_ptr<ConstInt> makeConstInt(int64_t value) {

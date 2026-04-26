@@ -372,6 +372,10 @@ std::vector<Token> Lexer::tokenize(const std::string &input) {
         type = TokenType::FOR;
       else if (identStr == "return" || identStr == "ret")
         type = TokenType::RETURN;
+      else if (identStr == "fail")
+        type = TokenType::FAIL;
+      else if (identStr == "or")
+        type = TokenType::OR;
       else if (identStr == "true" || identStr == "false")
         type = TokenType::BOOL;
       else if (identStr == "fun")

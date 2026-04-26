@@ -326,6 +326,8 @@ std::unique_ptr<BodyNode> Parser::parseBody() {
         body->addStatement(parseConstDecl());
       } else if (peek().type == TokenType::RETURN) {
         body->addStatement(parseReturnStmt());
+      } else if (peek().type == TokenType::FAIL) {
+        body->addStatement(parseFail());
       } else if (peek().type == TokenType::IF) {
         auto ifNode = parseIf();
         if (peek().type == TokenType::SEMICOLON) {
@@ -508,6 +510,37 @@ bool Parser::isTypeStartToken(TokenType type) const {
   return type == TokenType::ID || type == TokenType::MULTIPLY ||
          type == TokenType::ELLIPSIS || type == TokenType::SQUARE_LBRACE ||
          type == TokenType::WEAK;
+}
+
+bool Parser::isTryPostfixContext(TokenType type) const {
+  switch (type) {
+  case TokenType::SEMICOLON:
+  case TokenType::COMMA:
+  case TokenType::RPAREN:
+  case TokenType::RBRACE:
+  case TokenType::SQUARE_RBRACE:
+  case TokenType::PLUS:
+  case TokenType::MINUS:
+  case TokenType::MULTIPLY:
+  case TokenType::DIVIDE:
+  case TokenType::MODULO:
+  case TokenType::POW:
+  case TokenType::BIT_OR:
+  case TokenType::AND:
+  case TokenType::OR:
+  case TokenType::EQUAL:
+  case TokenType::NOTEQUAL:
+  case TokenType::LESS:
+  case TokenType::LESSEQUAL:
+  case TokenType::GREATER:
+  case TokenType::GREATEREQUAL:
+  case TokenType::LSHIFT:
+  case TokenType::RSHIFT:
+  case TokenType::AS:
+    return true;
+  default:
+    return false;
+  }
 }
 
 bool Parser::isGenericCallStart() const {
@@ -696,6 +729,22 @@ std::unique_ptr<TypeNode> Parser::parseType() {
   if (peek().type == TokenType::LESS && isTypeStartToken(peek(1).type)) {
     typeNode->genericArgs = parseGenericTypeArguments();
   }
+
+  if (peek().type == TokenType::NOT) {
+    eat(TokenType::NOT);
+    auto errorType = parseType();
+
+    auto failableType = _builder.makeType("");
+    failableType->isFailable = true;
+    failableType->baseType = std::move(typeNode);
+    failableType->errorType = std::move(errorType);
+
+    _builder.setSpan(
+        failableType.get(),
+        SourceSpan::merge(startToken.span, failableType->errorType->span));
+    return failableType;
+  }
+
   _builder.setSpan(typeNode.get(),
                    SourceSpan::merge(startToken.span, _tokens[_pos - 1].span));
   return typeNode;
@@ -868,8 +917,68 @@ std::unique_ptr<ContinueNode> Parser::parseContinue() {
   return node;
 }
 
+std::unique_ptr<FailNode> Parser::parseFail() {
+  Token failKeyword = eat(TokenType::FAIL);
+  auto errorValue = parseExpression();
+  Token semicolonToken = eat(TokenType::SEMICOLON);
+
+  auto node = _builder.makeFail(std::move(errorValue));
+  _builder.setSpan(node.get(),
+                   SourceSpan::merge(failKeyword.span, semicolonToken.span));
+  return node;
+}
+
 std::unique_ptr<ExpressionNode> Parser::parseExpression() {
-  return parseCastExpression();
+  return parseFailableExpression();
+}
+
+std::unique_ptr<ExpressionNode> Parser::parseFailableExpression() {
+  auto expr = parseCastExpression();
+
+  while (peek().type == TokenType::OR && peek().value == "or") {
+    eat(TokenType::OR);
+
+    SourceSpan startSpan = expr->span;
+
+    if (peek().type == TokenType::ID && peek().value == "err" &&
+        peek(1).type == TokenType::LBRACE) {
+      Token errToken = eat(TokenType::ID);
+      eat(TokenType::LBRACE);
+      auto handler = parseBody();
+      Token rbraceToken = eat(TokenType::RBRACE);
+
+      auto handled = _builder.makeFailableHandleExpr(
+          std::move(expr), errToken.value, std::move(handler));
+      _builder.setSpan(handled.get(),
+                       SourceSpan::merge(startSpan, rbraceToken.span));
+      expr = std::move(handled);
+      continue;
+    }
+
+    bool oldAllowStructLiteral = _allowStructLiteral;
+    _allowStructLiteral = true;
+
+    std::unique_ptr<ExpressionNode> fallback;
+    if (peek().type == TokenType::ID && peek(1).type == TokenType::LBRACE) {
+      Token typeToken = eat(TokenType::ID);
+      auto typeNode = _builder.makeType(typeToken.value);
+      _builder.setSpan(typeNode.get(), typeToken.span);
+      fallback = parseStructLiteral(std::move(typeNode));
+    } else {
+      fallback = parseCastExpression();
+    }
+
+    _allowStructLiteral = oldAllowStructLiteral;
+
+    SourceSpan endSpan = fallback->span;
+    auto fallbackExpr =
+        _builder.makeFallbackExpr(std::move(expr), std::move(fallback));
+    _builder.setSpan(fallbackExpr.get(),
+                     SourceSpan::merge(startSpan, endSpan));
+    expr = std::move(fallbackExpr);
+  }
+
+  return expr;
 }
 
 std::unique_ptr<UnsafeBlockNode> Parser::parseUnsafeBlock() {
@@ -929,6 +1038,10 @@ Parser::parseBinaryExpression(int minPrecedence) {
     if (isAtEnd())
       break;
     Token opToken = peek();
+    if (opToken.type == TokenType::OR && opToken.value == "or") {
+      break;
+    }
+
     int precedence = getPrecedence(opToken.type);
 
     if (precedence < minPrecedence) {
@@ -1067,6 +1180,13 @@ std::unique_ptr<ExpressionNode> Parser::parsePostfixExpression() {
       _builder.setSpan(funCall.get(),
                        SourceSpan::merge(leftSpan, rparenToken.span));
       left = std::move(funCall);
+    } else if (opToken.type == TokenType::QUESTION &&
+               isTryPostfixContext(peek(1).type)) {
+      eat(TokenType::QUESTION);
+      SourceSpan leftSpan = left->span;
+      auto tryExpr = _builder.makeTryExpr(std::move(left));
+      _builder.setSpan(tryExpr.get(), SourceSpan::merge(leftSpan, opToken.span));
+      left = std::move(tryExpr);
     } else if (_allowStructLiteral && opToken.type == TokenType::LBRACE) {
       auto qualifiedTypeName = qualifiedNameFromExpression(left.get());
       if (qualifiedTypeName.empty()) {

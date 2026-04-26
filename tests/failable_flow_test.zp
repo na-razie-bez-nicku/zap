@@ -1,0 +1,35 @@
+@error
+enum MathError {
+    DivisionByZero,
+    Overflow,
+}
+
+fun divide(a: Int, b: Int) Int!MathError {
+    if b == 0 {
+        fail MathError.DivisionByZero;
+    }
+    return a / b;
+}
+
+fun plusOneAfterDivision(v: Int) Int!MathError {
+    var half: Int = divide(v, 2)?;
+    return half + 1;
+}
+
+fun main() Int {
+    // Success path with propagation.
+    var a: Int = plusOneAfterDivision(10) or 0;
+
+    // Fallback value path.
+    var b: Int = divide(10, 0) or 7;
+
+    // Local handling path with `or err { ... }`.
+    // `return` exits the surrounding function on error branch.
+    var c: Int = divide(10, 2) or err {
+        return 99;
+    };
+
+    // If everything works:
+    // a = 6, b = 7, c = 5 => result = 0
+    return (a + b + c) - 18;
+}

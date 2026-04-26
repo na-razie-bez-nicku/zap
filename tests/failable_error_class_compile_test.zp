@@ -1,0 +1,40 @@
+@error
+class ClassError {
+    code: Int,
+
+    fun init(code: Int) {
+        self.code = code;
+    }
+
+    pub fun getCode() Int {
+        return self.code;
+    }
+}
+
+fun source(ok: Bool) Int!ClassError {
+    if !ok {
+        fail new ClassError(77);
+    }
+    return 21;
+}
+
+fun sink(ok: Bool) Int!ClassError {
+    var v: Int = source(ok)?;
+    return v + 1;
+}
+
+fun main() Int {
+    var a: Int = sink(true) or 0;
+    if a != 22 {
+        return 1;
+    }
+
+    var b: Int = sink(false) or err {
+        err.getCode()
+    };
+    if b != 77 {
+        return 2;
+    }
+
+    return 0;
+}

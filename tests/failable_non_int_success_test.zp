@@ -1,0 +1,54 @@
+@error
+enum BuildError {
+    InvalidInput,
+}
+
+struct Pair {
+    left: Int,
+    right: Int,
+}
+
+fun buildPair(a: Int, b: Int, failNow: Bool) Pair!BuildError {
+    if failNow {
+        fail BuildError.InvalidInput;
+    }
+    return Pair{ left: a, right: b };
+}
+
+fun mapPair(a: Int, b: Int, failNow: Bool) Pair!BuildError {
+    var p: Pair = buildPair(a, b, failNow)?;
+    return Pair{ left: p.left + 1, right: p.right + 1 };
+}
+
+fun main() Int {
+    // Success path with non-Int success type T = Pair.
+    var ok: Pair = mapPair(10, 20, false) or Pair{ left: 0, right: 0 };
+    if ok.left != 11 {
+        return 1;
+    }
+    if ok.right != 21 {
+        return 2;
+    }
+
+    // Fallback value path for non-Int success type.
+    var fb: Pair = mapPair(10, 20, true) or Pair{ left: 7, right: 9 };
+    if fb.left != 7 {
+        return 3;
+    }
+    if fb.right != 9 {
+        return 4;
+    }
+
+    // Local error handling path returning non-Int success type.
+    var handled: Pair = mapPair(1, 2, true) or err {
+        Pair{ left: 99, right: 100 }
+    };
+    if handled.left != 99 {
+        return 5;
+    }
+    if handled.right != 100 {
+        return 6;
+    }
+
+    return 0;
+}

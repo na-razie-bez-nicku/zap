@@ -58,6 +58,10 @@ public:
   void visit(StructLiteralNode &node) override;
   void visit(UnsafeBlockNode &node) override;
   void visit(NewExpr &node) override;
+  void visit(TryExpr &node) override;
+  void visit(FallbackExpr &node) override;
+  void visit(FailableHandleExpr &node) override;
+  void visit(FailNode &node) override;
 
 private:
   zap::DiagnosticEngine &_diag;

@@ -1,0 +1,9 @@
+@error
+enum MathError { DivisionByZero }
+
+fun divide(a: Int, b: Int) Int!MathError {
+    if b == 0 { fail MathError.DivisionByZero; }
+    return a / b;
+}
+
+fun main() Int { var x: Int = divide(10, 2)?; return x; }

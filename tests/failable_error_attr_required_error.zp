@@ -1,0 +1,18 @@
+// This test must fail:
+// error type in T!E must be annotated with @error.
+
+enum PlainError {
+    NotAnnotated,
+}
+
+fun bad(a: Int) Int!PlainError {
+    if a == 0 {
+        fail PlainError.NotAnnotated;
+    }
+    return a;
+}
+
+fun main() Int {
+    var x: Int = bad(0) or 0;
+    return x;
+}

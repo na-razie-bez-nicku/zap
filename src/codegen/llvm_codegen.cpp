@@ -2837,6 +2837,30 @@ void LLVMCodeGen::visit(sema::BoundWeakAliveExpression &node) {
   lastValue_ = emitWeakAlive(lastValue_, node.weakExpression->type);
 }
 
+void LLVMCodeGen::visit(sema::BoundTryExpression &node) {
+  (void)node;
+  throw std::runtime_error(
+      "BoundTryExpression should be lowered to ZIR before LLVMCodeGen.");
+}
+
+void LLVMCodeGen::visit(sema::BoundFallbackExpression &node) {
+  (void)node;
+  throw std::runtime_error(
+      "BoundFallbackExpression should be lowered to ZIR before LLVMCodeGen.");
+}
+
+void LLVMCodeGen::visit(sema::BoundFailableHandleExpression &node) {
+  (void)node;
+  throw std::runtime_error("BoundFailableHandleExpression should be lowered to "
+                           "ZIR before LLVMCodeGen.");
+}
+
+void LLVMCodeGen::visit(sema::BoundFailStatement &node) {
+  (void)node;
+  throw std::runtime_error(
+      "BoundFailStatement should be lowered to ZIR before LLVMCodeGen.");
+}
+
 void LLVMCodeGen::visit(sema::BoundIfStatement &node) {
   if (!currentFn_)
     throw std::runtime_error("currentFn_ is null in visit(BoundIfStatement)");
