@@ -25,6 +25,7 @@
 #include "../ast/var_decl.hpp"
 #include "../ast/while_node.hpp"
 #include "../ast/member_access.hpp"
+#include "../ast/attribute.hpp"
 #include "../token/token.hpp"
 #include "../utils/diagnostics.hpp"
 #include "ast_builder.hpp"
@@ -67,6 +68,8 @@ namespace zap
     SourceSpan pointAfter(const SourceSpan &span) const;
 
     // Parsing rules
+    std::vector<AttributeNode> parseAttributes();
+    AttributeNode parseSingleAttribute();
     std::unique_ptr<FunDecl> parseFunDecl(bool isUnsafe = false);
     std::unique_ptr<ExtDecl> parseExtDecl();
     std::unique_ptr<ImportNode> parseImportDecl();

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "../ir/type.hpp"
 #include "../visibility.hpp"
 #include <memory>
@@ -19,6 +20,16 @@ public:
   std::string moduleName;
   std::shared_ptr<zir::Type> type;
   Visibility visibility = Visibility::Private;
+
+  // Built-in attribute semantic flags (MVP).
+  bool isErrorType = false;      // @error on enum/struct
+  bool hasReprC = false;         // @repr("C") on enum/struct
+  bool hasExternC = false;       // @extern("C") on function
+  bool hasNoMangle = false;      // @noMangle on function
+
+  std::string reprValue;         // e.g. "C"
+  std::string externAbi;         // e.g. "C"
+
   virtual ~Symbol() noexcept = default;
   virtual SymbolKind getKind() const noexcept = 0;
 

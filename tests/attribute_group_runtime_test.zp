@@ -1,0 +1,12 @@
+@{extern("C"), noMangle}
+fun exportedAnswer() Int32 {
+    return 123;
+}
+
+fun main() Int {
+    var value: Int32 = exportedAnswer();
+    if value == 123 {
+        return 0;
+    }
+    return 1;
+}

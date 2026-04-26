@@ -1,12 +1,10 @@
-unsafe fun deref(ptr: *Int) Int {
-    return *ptr;
-}
-
 fun main() Int {
     var value: Int = 10;
+    var ptr: *Int = &value;
 
     unsafe {
-        var ptr: *Int = &value;
-        return deref(ptr);
+        *ptr = 11;
     }
+
+    return value - 11;
 }

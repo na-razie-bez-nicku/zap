@@ -1,0 +1,8 @@
+@extern(abi: "C")
+fun cAbi() Int {
+    return 0;
+}
+
+fun main() Int {
+    return cAbi();
+}

@@ -1,0 +1,8 @@
+@noMangle("C")
+fun exported() Int {
+    return 0;
+}
+
+fun main() Int {
+    return exported();
+}
