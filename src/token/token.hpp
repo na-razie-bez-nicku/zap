@@ -34,39 +34,40 @@ enum TokenType {
   ARRAY = 28,         ///< ???
   SQUARE_LBRACE = 29, ///< '[' symbol.
   SQUARE_RBRACE = 30, ///< ']' symbol.
-  QUESTION = 31,      ///< ';' symbol.
-  ARROW = 32,         ///< '->' symbol.
-  LAMBDA = 33,        ///< ? '=>' symbol ?
-  LESSEQUAL = 34,     ///< '<=' symbol.
-  LESS = 35,          ///< '<' symbol.
-  GREATER = 36,       ///< '>' symbol.
-  GREATEREQUAL = 37,  ///< '>=' symbol.
-  EQUAL = 38,         ///< '==' symbol.
-  ASSIGN = 39,        ///< '=' symbol.
-  PLUS = 40,          ///< '+' symbol.
-  MINUS = 41,         ///< '-' symbol.
-  MULTIPLY = 42,      ///< '*' symbol.
-  REFERENCE = 43,     ///< '&' symbol.
-  DIVIDE = 44,        ///< '/' symbol.
-  MODULO = 45,        ///< '%' symbol.
-  POW = 46,           ///< '^' symbol.
-  NOT = 47,           ///< '!' symbol.
-  AND = 48,           ///< '&&' symbol.
-  OR = 49,            ///< '||' symbol.
-  ID = 50,            ///< Identifier.
-  INTEGER = 51,       ///< Integer.
-  FLOAT = 52,         ///< Floating point.
-  STRING = 53,        ///< String.
-  CHAR = 54,          ///< Char.
-  BOOL = 55,          ///< True or false.
-  BREAK = 56,         ///< "break" keyword.
-  CONTINUE = 57,      ///< "continue" keyword.
-  ELLIPSIS = 58,      ///< '...' symbol.
-  NOTEQUAL = 59,      ///< '!=' symbol.
-  CONCAT = 60,        ///< '~' symbol.
-  BIT_OR = 61,        ///< '|' symbol.
-  ALIAS = 62,         ///< "alias" keyword.
-  REF = 63,           ///< "ref" keyword.
+  AT = 31,            ///< '@' symbol.
+  QUESTION = 32,      ///< ';' symbol.
+  ARROW = 33,         ///< '->' symbol.
+  LAMBDA = 34,        ///< ? '=>' symbol ?
+  LESSEQUAL = 35,     ///< '<=' symbol.
+  LESS = 36,          ///< '<' symbol.
+  GREATER = 37,       ///< '>' symbol.
+  GREATEREQUAL = 38,  ///< '>=' symbol.
+  EQUAL = 39,         ///< '==' symbol.
+  ASSIGN = 40,        ///< '=' symbol.
+  PLUS = 41,          ///< '+' symbol.
+  MINUS = 42,         ///< '-' symbol.
+  MULTIPLY = 43,      ///< '*' symbol.
+  REFERENCE = 44,     ///< '&' symbol.
+  DIVIDE = 45,        ///< '/' symbol.
+  MODULO = 46,        ///< '%' symbol.
+  POW = 47,           ///< '^' symbol.
+  NOT = 48,           ///< '!' symbol.
+  AND = 49,           ///< '&&' symbol.
+  OR = 50,            ///< '||' symbol.
+  ID = 51,            ///< Identifier.
+  INTEGER = 52,       ///< Integer.
+  FLOAT = 53,         ///< Floating point.
+  STRING = 54,        ///< String.
+  CHAR = 55,          ///< Char.
+  BOOL = 56,          ///< True or false.
+  BREAK = 57,         ///< "break" keyword.
+  CONTINUE = 58,      ///< "continue" keyword.
+  ELLIPSIS = 59,      ///< '...' symbol.
+  NOTEQUAL = 60,      ///< '!=' symbol.
+  CONCAT = 61,        ///< '~' symbol.
+  BIT_OR = 62,        ///< '|' symbol.
+  ALIAS = 63,         ///< "alias" keyword.
+  REF = 64,           ///< "ref" keyword.
   LSHIFT,             ///< '<<' symbol.
   RSHIFT,             ///< '>>' symbol.
   AS,
@@ -174,6 +175,8 @@ inline std::string tokenTypeToString(TokenType type) {
     return "[";
   case TokenType::SQUARE_RBRACE:
     return "]";
+  case TokenType::AT:
+    return "@";
   case TokenType::QUESTION:
     return "?";
   case TokenType::ASSIGN:

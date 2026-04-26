@@ -1,0 +1,8 @@
+@error
+fun bad() Int {
+    return 0;
+}
+
+fun main() Int {
+    return bad();
+}

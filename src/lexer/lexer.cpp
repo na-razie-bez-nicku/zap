@@ -92,6 +92,12 @@ std::vector<Token> Lexer::tokenize(const std::string &input) {
         ++_column;
         continue;
       }
+    } else if (_cur == '@') {
+      tokens.emplace_back(TokenType::AT, "@", startLine, startColumn, startPos,
+                          1);
+      ++_pos;
+      ++_column;
+      continue;
     } else if (_cur == '?') {
       tokens.emplace_back(TokenType::QUESTION, "?", startLine, startColumn,
                           startPos, 1);

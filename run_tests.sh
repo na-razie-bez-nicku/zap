@@ -96,32 +96,42 @@ run_test "tests/valid.zp" 0 "Valid program"
 run_test "tests/return_void.zp" 0 "Return in void function"
 run_test "tests/modulo_test.zp" 0 "Modulo operator test"
 
-# Warning test: compile and check stderr for the warning message
-run_warning_test() {
+# Warning test helper: compile and check stderr for an arbitrary warning pattern
+run_warning_pattern_test() {
     local file=$1
-    local description=$2
+    local warning_pattern=$2
+    local description=$3
 
     require_test_file "$file" "$description" || return
 
     ((TOTAL++))
     echo -n "Running $description ($file)... "
 
+    local tmpfile
     tmpfile=$(mktemp)
     $ZAPC "$file" 2> "$tmpfile" > /dev/null
     local exit_code=$?
 
     if [ $exit_code -ne 0 ]; then
         echo -e "${RED}FAIL${NC} (compiler error)"
+        rm -f "$tmpfile"
         return
     fi
 
-    if grep -qi "has non-void return type but no return" "$tmpfile"; then
+    if grep -qi "$warning_pattern" "$tmpfile"; then
         echo -e "${GREEN}PASS${NC}"
         ((PASSED++))
     else
-        echo -e "${RED}FAIL${NC} (warning not emitted)"
+        echo -e "${RED}FAIL${NC} (warning '$warning_pattern' not emitted)"
     fi
     rm -f "$tmpfile"
+}
+
+# Warning test: compile and check stderr for the default warning message
+run_warning_test() {
+    local file=$1
+    local description=$2
+    run_warning_pattern_test "$file" "has non-void return type but no return" "$description"
 }
 
 # Runtime test: compile, run produced binary, check its exit code
@@ -330,9 +340,11 @@ run_warning_runtime_test() {
 
 # Warning test: non-void function without return should emit warning
 run_warning_test "tests/warn_missing_return.zp" "Warning: missing return in non-void function"
+run_warning_pattern_test "tests/attribute_unknown_warning.zp" "unknown attribute 'unknownAttr'" "Warning: unknown attribute is reported"
 
 # Runtime test: main without explicit return type should default to Int and return 0
 run_runtime_test "tests/main_implicit.zp" 0 "Main implicit return type and implicit return 0"
+run_runtime_test "tests/attribute_group_runtime_test.zp" 0 "Grouped function attributes (@extern + @noMangle) compile and run"
 run_compile_args_test "tests/nostdlib_ext_main_object.zp" "tests/nostdlib_ext_main_object.o" "Object compile with -nostdlib and external main" -nostdlib -c
 run_runtime_test "tests/ext_default_void_runtime.zp" 0 "External function without return type defaults to Void at runtime"
 run_runtime_args_test "tests/process_args_test.zp" 0 "Process argument access" alpha beta gamma
@@ -362,8 +374,8 @@ run_runtime_compile_args_test "tests/ptr_deref_nested_field_test.zp" 0 "Pointer 
 
 # Semantic errors (exit code 1)
 run_test "tests/ext_default_void_type_error.zp" 1 "External function without return type cannot be used as Int"
-run_test "tests/unsafe_requires_flag.zp" 1 "Unsafe features require --allow-unsafe"
-run_test_args "tests/unsafe_scope_error.zp" 1 "Unsafe features are scoped" --allow-unsafe
+run_test "tests/unsafe_requires_flag.zp" 1 "Unsafe blocks require --allow-unsafe"
+run_test_args "tests/unsafe_scope_error.zp" 1 "Unsafe-only operations are scoped to unsafe blocks" --allow-unsafe
 run_test_args "tests/unsafe_fun_call_scope_error.zp" 1 "Unsafe function calls are scoped" --allow-unsafe
 run_test_args "tests/class_unsafe_method_scope_error.zp" 1 "Unsafe class methods are scoped" --allow-unsafe
 run_test_args "tests/class_unsafe_static_method_scope_error.zp" 1 "Unsafe static class methods are scoped" --allow-unsafe
@@ -440,6 +452,11 @@ run_test "tests/function_overload_ambiguous_error.zp" 1 "Ambiguous overloaded ca
 run_test "tests/function_overload_duplicate_error.zp" 1 "Duplicate overload signature is rejected"
 run_test "tests/function_overload_return_only_error.zp" 1 "Overloads cannot differ only by return type"
 run_test "tests/function_overload_named_args_error.zp" 1 "Positional arguments cannot follow named arguments"
+run_test "tests/attribute_noMangle_args_error.zp" 1 "noMangle does not accept arguments"
+run_test "tests/attribute_error_on_fun_error.zp" 1 "error attribute cannot be applied to function declarations"
+run_test "tests/attribute_repr_invalid_value_error.zp" 1 "repr only accepts \"C\" in MVP"
+run_test "tests/attribute_extern_named_arg_error.zp" 1 "extern expects positional string argument"
+run_runtime_test "tests/attribute_extern_symbol_name_test.zp" 0 "extern(\"C\") keeps function symbol unmangled"
 run_runtime_test "tests/precedence_test.zp" 0 "Operator precedence (NOT vs Member access)"
 run_runtime_test "tests/type_alias.zp" 42 "Type aliasing (alias Name = Type)"
 run_runtime_test "tests/ref_test.zp" 0 "Reference type test"
@@ -496,6 +513,7 @@ run_diagnostic_code_test "tests/diagnostics/03_type_messages.zp" 1 "Diagnostics:
 run_diagnostic_code_test "tests/diagnostics/04_codes_parser.zp" 1 "Diagnostics: parser code coverage regression sample" P1002 P1003 P1004 N1000
 run_diagnostic_code_test "tests/diagnostics/05_codes_semantic.zp" 1 "Diagnostics: semantic code coverage regression sample" S2001 S2002 S2003 S2005 S2006 S2007 S2008 S2009 S2010 S2012 N1000 E0000
 run_diagnostic_code_test "tests/diagnostics/06_codes_cascade_stress.zp" 1 "Diagnostics: cascade stress remains bounded and coded" P1002 P1003 P1004 N1000
+run_test "tests/diagnostics/07_attributes_parser_sync.zp" 1 "Diagnostics: parser synchronization with malformed attributes"
 
 echo "-------------------------------"
 echo "Results: $PASSED / $TOTAL passed"

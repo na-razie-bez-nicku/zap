@@ -1,0 +1,9 @@
+@repr("Rust")
+struct Packet {
+    id: Int,
+}
+
+fun main() Int {
+    var p: Packet = Packet { id: 7 };
+    return p.id;
+}

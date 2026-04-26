@@ -25,10 +25,75 @@ Parser::Parser(const std::vector<Token> &tokens, DiagnosticEngine &diag)
 
 Parser::~Parser() {}
 
+std::vector<AttributeNode> Parser::parseAttributes() {
+  std::vector<AttributeNode> attributes;
+
+  while (peek().type == TokenType::AT) {
+    Token atToken = eat(TokenType::AT);
+
+    if (peek().type == TokenType::LBRACE) {
+      eat(TokenType::LBRACE);
+
+      if (peek().type != TokenType::RBRACE) {
+        do {
+          attributes.push_back(parseSingleAttribute());
+        } while (peek().type == TokenType::COMMA &&
+                 eat(TokenType::COMMA).type == TokenType::COMMA);
+      }
+
+      eat(TokenType::RBRACE);
+    } else {
+      auto attr = parseSingleAttribute();
+      attr.span = SourceSpan::merge(atToken.span, attr.span);
+      attributes.push_back(std::move(attr));
+    }
+  }
+
+  return attributes;
+}
+
+AttributeNode Parser::parseSingleAttribute() {
+  Token nameToken = eat(TokenType::ID);
+  AttributeNode attr;
+  attr.name = nameToken.value;
+  attr.span = nameToken.span;
+
+  if (peek().type == TokenType::LPAREN) {
+    eat(TokenType::LPAREN);
+
+    if (peek().type != TokenType::RPAREN) {
+      do {
+        AttributeArgument arg;
+
+        if (peek().type == TokenType::ID && peek(1).type == TokenType::COLON) {
+          Token argName = eat(TokenType::ID);
+          eat(TokenType::COLON);
+          arg.kind = AttributeArgumentKind::Named;
+          arg.name = argName.value;
+          arg.value = parseExpression();
+        } else {
+          arg.kind = AttributeArgumentKind::Positional;
+          arg.value = parseExpression();
+        }
+
+        attr.arguments.push_back(std::move(arg));
+      } while (peek().type == TokenType::COMMA &&
+               eat(TokenType::COMMA).type == TokenType::COMMA);
+    }
+
+    Token rparen = eat(TokenType::RPAREN);
+    attr.span = SourceSpan::merge(nameToken.span, rparen.span);
+  }
+
+  return attr;
+}
+
 std::unique_ptr<RootNode> Parser::parse() {
   auto root = _builder.makeRoot();
   while (!isAtEnd()) {
     try {
+      auto attributes = parseAttributes();
+
       Visibility visibility = Visibility::Private;
       if (peek().type == TokenType::PUB || peek().type == TokenType::PRIV) {
         visibility = (eat(peek().type).type == TokenType::PUB)
@@ -36,66 +101,68 @@ std::unique_ptr<RootNode> Parser::parse() {
                          : Visibility::Private;
       }
 
-      auto applyVisibility = [visibility](Node *node) {
+      auto applyMetadata = [&visibility](Node *node,
+                                         std::vector<AttributeNode> attrs = {}) {
         if (auto topLevel = dynamic_cast<TopLevel *>(node)) {
           topLevel->visibility_ = visibility;
+          topLevel->attributes_ = std::move(attrs);
         }
       };
 
       if (peek().type == TokenType::IMPORT) {
         auto importDecl = parseImportDecl();
-        importDecl->visibility_ = visibility;
+        applyMetadata(importDecl.get(), std::move(attributes));
         root->addChild(std::move(importDecl));
       } else if (peek().type == TokenType::UNSAFE &&
                  peek(1).type == TokenType::FUN) {
         eat(TokenType::UNSAFE);
         auto decl = parseFunDecl(true);
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::FUN) {
         auto decl = parseFunDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::EXTERN) {
         auto decl = parseExtDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::ENUM) {
         auto decl = parseEnumDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::ALIAS) {
         auto decl = parseTypeAliasDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::UNSAFE &&
                  peek(1).type == TokenType::STRUCT) {
         eat(TokenType::UNSAFE);
         auto decl = parseStructDecl(true);
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::STRUCT) {
         auto decl = parseStructDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::RECORD) {
         auto decl = parseRecordDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::CLASS) {
         auto decl = parseClassDecl();
-        applyVisibility(decl.get());
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::CONST) {
         auto decl = parseConstDecl();
-        decl->visibility_ = visibility;
+        applyMetadata(decl.get(), std::move(attributes));
         root->addChild(std::move(decl));
       } else if (peek().type == TokenType::GLOBAL) {
         Token globalToken = eat(TokenType::GLOBAL);
         if (peek().type == TokenType::VAR) {
           auto varDecl = parseVarDecl();
           varDecl->isGlobal_ = true;
-          varDecl->visibility_ = visibility;
+          applyMetadata(varDecl.get(), std::move(attributes));
           _builder.setSpan(varDecl.get(),
                            SourceSpan::merge(globalToken.span, varDecl->span));
           root->addChild(std::move(varDecl));
@@ -1251,6 +1318,7 @@ void Parser::synchronize(SyncContext context) {
     case TokenType::PUB:
     case TokenType::PRIV:
     case TokenType::PROT:
+    case TokenType::AT:
       if (context == SyncContext::TopLevel) {
         return;
       }

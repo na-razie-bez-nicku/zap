@@ -1,0 +1,8 @@
+@unknownAttr
+fun helper() Int {
+    return 7;
+}
+
+fun main() Int {
+    return helper() - 7;
+}

@@ -223,6 +223,15 @@ private:
   std::shared_ptr<zir::Type>
   getCVariadicArgumentType(std::shared_ptr<zir::Type> type);
 
+  bool isSupportedBuiltInAttribute(const std::string &name) const;
+  void warnUnknownAttributes(const TopLevel &node);
+  void validateAndApplyTypeAttributes(const TopLevel &node,
+                                      const std::shared_ptr<TypeSymbol> &symbol,
+                                      bool allowErrorAttribute);
+  void validateAndApplyFunctionAttributes(
+      const TopLevel &node, const std::shared_ptr<FunctionSymbol> &symbol,
+      bool isExternalDeclaration);
+
   bool hadError_ = false;
 };
 

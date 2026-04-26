@@ -1,0 +1,12 @@
+@extern("C")
+fun cAbiName() Int32 {
+    return 42;
+}
+
+fun callFromZap() Int32 {
+    return cAbiName();
+}
+
+fun main() Int {
+    return (callFromZap() - 42) as Int;
+}

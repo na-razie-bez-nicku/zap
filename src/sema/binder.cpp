@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace sema {
 namespace {
@@ -1034,7 +1035,6 @@ std::shared_ptr<TypeSymbol> Binder::instantiateGenericTypeSymbol(
 
     for (const auto &methodDecl : classDecl->methods_) {
       if (methodDecl->isUnsafe_) {
-        requireUnsafeEnabled(methodDecl->span, "'unsafe fun'");
         ++unsafeTypeContextDepth_;
       }
 
@@ -1735,6 +1735,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
                                                    : module.info->linkPath,
                      recordDecl->name_),
           module.info->moduleName, recordDecl->visibility_, false);
+      validateAndApplyTypeAttributes(*recordDecl, symbol, false);
       for (const auto &genericParam : recordDecl->genericParams_) {
         if (genericParam) {
           symbol->genericParameterNames.push_back(genericParam->typeName);
@@ -1769,6 +1770,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
       }
       classTypeDeclarationNodes_[symbol.get()] = classDecl;
       typeDeclarationModuleIds_[symbol.get()] = module.info->moduleId;
+      validateAndApplyTypeAttributes(*classDecl, symbol, false);
       if (!module.scope->declare(classDecl->name_, symbol)) {
         error(classDecl->span,
               "Type '" + classDecl->name_ + "' already declared.");
@@ -1806,6 +1808,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
       }
       structTypeDeclarationNodes_[symbol.get()] = structDecl;
       typeDeclarationModuleIds_[symbol.get()] = module.info->moduleId;
+      validateAndApplyTypeAttributes(*structDecl, symbol, true);
       if (!module.scope->declare(structDecl->name_, symbol)) {
         error(structDecl->span,
               "Type '" + structDecl->name_ + "' already declared.");
@@ -1827,6 +1830,7 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
                                                    : module.info->linkPath,
                      enumDecl->name_),
           module.info->moduleName, enumDecl->visibility_, false);
+      validateAndApplyTypeAttributes(*enumDecl, symbol, true);
       if (!module.scope->declare(enumDecl->name_, symbol)) {
         error(enumDecl->span,
               "Type '" + enumDecl->name_ + "' already declared.");
@@ -2009,7 +2013,6 @@ void Binder::predeclareModuleValues(ModuleState &module) {
   for (const auto &child : module.info->root->children) {
     if (auto funDecl = dynamic_cast<FunDecl *>(child.get())) {
       if (funDecl->isUnsafe_) {
-        requireUnsafeEnabled(funDecl->span, "'unsafe fun'");
         ++unsafeTypeContextDepth_;
       }
 
@@ -2090,7 +2093,12 @@ void Binder::predeclareModuleValues(ModuleState &module) {
       functionGenericParamNames_[symbol.get()] = symbol->genericParameterNames;
       functionDeclarationNodes_[symbol.get()] = funDecl;
       functionDeclarationModuleIds_[symbol.get()] = module.info->moduleId;
-      if (linkName != "main") {
+      validateAndApplyFunctionAttributes(*funDecl, symbol, false);
+
+      if (symbol->hasNoMangle ||
+          (symbol->hasExternC && symbol->externAbi == "C")) {
+        symbol->linkName = symbol->name;
+      } else if (linkName != "main") {
         symbol->linkName = mangleFunctionName(module.info->linkPath.empty()
                                                   ? module.info->moduleId
                                                   : module.info->linkPath,
@@ -2169,7 +2177,6 @@ void Binder::predeclareModuleValues(ModuleState &module) {
 
       for (const auto &methodDecl : classDecl->methods_) {
         if (methodDecl->isUnsafe_) {
-          requireUnsafeEnabled(methodDecl->span, "'unsafe fun'");
           ++unsafeTypeContextDepth_;
         }
 
@@ -2336,6 +2343,11 @@ void Binder::predeclareModuleValues(ModuleState &module) {
           extDecl->name_, std::move(params), std::move(retType), linkName,
           module.info->moduleName, extDecl->visibility_, false,
           extDecl->isCVariadic_);
+      validateAndApplyFunctionAttributes(*extDecl, symbol, true);
+      if (symbol->hasNoMangle ||
+          (symbol->hasExternC && symbol->externAbi == "C")) {
+        symbol->linkName = symbol->name;
+      }
       auto existing = module.scope->lookupLocal(extDecl->name_);
       if (findFunctionBySignature(existing, *symbol)) {
         error(extDecl->span,
@@ -2493,6 +2505,152 @@ Binder::resolveQualifiedSymbol(const std::vector<std::string> &parts,
   return symbol;
 }
 
+bool Binder::isSupportedBuiltInAttribute(const std::string &name) const {
+  static const std::unordered_set<std::string> builtIns = {
+      "error", "repr", "extern", "noMangle"};
+  return builtIns.find(name) != builtIns.end();
+}
+
+void Binder::warnUnknownAttributes(const TopLevel &node) {
+  for (const auto &attr : node.attributes_) {
+    if (!isSupportedBuiltInAttribute(attr.name)) {
+      _diag.report(attr.span, zap::DiagnosticLevel::Warning,
+                   "unknown attribute '" + attr.name + "'");
+    }
+  }
+}
+
+void Binder::validateAndApplyTypeAttributes(
+    const TopLevel &node, const std::shared_ptr<TypeSymbol> &symbol,
+    bool allowErrorAttribute) {
+  if (!symbol) {
+    return;
+  }
+
+  warnUnknownAttributes(node);
+
+  bool seenError = false;
+  bool seenRepr = false;
+
+  for (const auto &attr : node.attributes_) {
+    if (attr.name == "error") {
+      if (!allowErrorAttribute) {
+        error(attr.span, "attribute 'error' cannot be applied to this type");
+        continue;
+      }
+      if (seenError) {
+        error(attr.span, "duplicate attribute 'error'");
+        continue;
+      }
+      if (attr.hasArguments()) {
+        error(attr.span, "attribute 'error' does not accept arguments");
+        continue;
+      }
+      seenError = true;
+      symbol->isErrorType = true;
+      continue;
+    }
+
+    if (attr.name == "repr") {
+      if (seenRepr) {
+        error(attr.span, "duplicate attribute 'repr'");
+        continue;
+      }
+      seenRepr = true;
+
+      if (attr.arguments.size() != 1 || attr.arguments[0].kind != AttributeArgumentKind::Positional) {
+        error(attr.span, "attribute 'repr' expects exactly one positional string argument");
+        continue;
+      }
+
+      auto *str = dynamic_cast<ConstString *>(attr.arguments[0].value.get());
+      if (!str) {
+        error(attr.span, "attribute 'repr' expects a string literal argument");
+        continue;
+      }
+
+      if (str->value_ != "C") {
+        error(attr.span, "invalid argument for attribute 'repr': expected \"C\"");
+        continue;
+      }
+
+      symbol->hasReprC = true;
+      symbol->reprValue = str->value_;
+      continue;
+    }
+
+    if (attr.name == "extern" || attr.name == "noMangle") {
+      error(attr.span,
+            "attribute '" + attr.name + "' cannot be applied to type declarations");
+      continue;
+    }
+  }
+}
+
+void Binder::validateAndApplyFunctionAttributes(
+    const TopLevel &node, const std::shared_ptr<FunctionSymbol> &symbol,
+    bool isExternalDeclaration) {
+  (void)isExternalDeclaration;
+  if (!symbol) {
+    return;
+  }
+
+  warnUnknownAttributes(node);
+
+  bool seenExtern = false;
+  bool seenNoMangle = false;
+
+  for (const auto &attr : node.attributes_) {
+    if (attr.name == "extern") {
+      if (seenExtern) {
+        error(attr.span, "duplicate attribute 'extern'");
+        continue;
+      }
+      seenExtern = true;
+
+      if (attr.arguments.size() != 1 || attr.arguments[0].kind != AttributeArgumentKind::Positional) {
+        error(attr.span, "attribute 'extern' expects exactly one positional string argument");
+        continue;
+      }
+
+      auto *str = dynamic_cast<ConstString *>(attr.arguments[0].value.get());
+      if (!str) {
+        error(attr.span, "attribute 'extern' expects a string literal argument");
+        continue;
+      }
+
+      if (str->value_ != "C") {
+        error(attr.span, "invalid argument for attribute 'extern': expected \"C\"");
+        continue;
+      }
+
+      symbol->hasExternC = true;
+      symbol->externAbi = str->value_;
+      continue;
+    }
+
+    if (attr.name == "noMangle") {
+      if (seenNoMangle) {
+        error(attr.span, "duplicate attribute 'noMangle'");
+        continue;
+      }
+      if (attr.hasArguments()) {
+        error(attr.span, "attribute 'noMangle' does not accept arguments");
+        continue;
+      }
+      seenNoMangle = true;
+      symbol->hasNoMangle = true;
+      continue;
+    }
+
+    if (attr.name == "repr" || attr.name == "error") {
+      error(attr.span,
+            "attribute '" + attr.name + "' cannot be applied to functions");
+      continue;
+    }
+  }
+}
+
 void Binder::visit(RootNode &node) {
   for (const auto &child : node.children) {
     if (dynamic_cast<ImportNode *>(child.get())) {
@@ -2587,7 +2745,6 @@ void Binder::visit(FunDecl &node) {
   currentFunction_ = symbol;
   int oldUnsafeDepth = unsafeDepth_;
   if (node.isUnsafe_) {
-    requireUnsafeEnabled(node.span, "'unsafe fun'");
     ++unsafeDepth_;
   }
 
@@ -2923,8 +3080,6 @@ void Binder::visit(BinExpr &node) {
     resultType = std::make_shared<zir::RecordType>("String", "String");
   } else if ((node.op_ == "+" || node.op_ == "-") &&
              (isPointerType(leftType) || isPointerType(rightType))) {
-    requireUnsafeEnabled(node.span, "pointer arithmetic");
-
     if (node.op_ == "+" && isPointerType(leftType) && rightType->isInteger()) {
       resultType = leftType;
     } else if (node.op_ == "+" && leftType->isInteger() &&
@@ -3010,7 +3165,6 @@ void Binder::visit(BinExpr &node) {
     if (!classOrNullComparison &&
         (isPointerType(leftType) || isPointerType(rightType) ||
          isNullType(leftType) || isNullType(rightType))) {
-      requireUnsafeEnabled(node.span, "pointer comparisons");
     }
 
     // Reject comparisons of struct types
@@ -3127,7 +3281,6 @@ void Binder::visit(ConstNull &node) {
       expectedType && expectedType->getKind() == zir::TypeKind::Class;
 
   if (!nullIsSafeHere) {
-    requireUnsafeEnabled(node.span, "'null'");
   }
   expressionStack_.push(std::make_unique<BoundLiteral>(
       "0", std::make_shared<zir::PrimitiveType>(zir::TypeKind::NullPtr)));
@@ -3146,8 +3299,6 @@ void Binder::visit(CastExpr &node) {
     error(node.type_->span, "Unknown type: " + node.type_->qualifiedName());
     return;
   }
-
-  requireUnsafeEnabled(node.span, "explicit casts");
 
   bool castAllowed = false;
   if (isNumeric(expr->type) && isNumeric(targetType))
@@ -3429,7 +3580,6 @@ void Binder::visit(FunCall &node) {
         return;
       }
       if (funcSymbol->isUnsafe) {
-        requireUnsafeEnabled(node.span, "unsafe function calls");
         requireUnsafeContext(node.span, "unsafe function calls");
       }
 
@@ -3937,7 +4087,6 @@ void Binder::visit(FunCall &node) {
 
   if (matches.empty()) {
     if (blockedUnsafeMatch) {
-      requireUnsafeEnabled(node.span, "unsafe function calls");
       requireUnsafeContext(node.span, "unsafe function calls");
       return;
     }
@@ -4372,7 +4521,6 @@ std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode) {
   }
 
   if (typeNode.isPointer) {
-    requireUnsafeEnabled(typeNode.span, "raw pointer types");
     if (!typeNode.baseType)
       return nullptr;
     auto base = mapType(*typeNode.baseType);
@@ -4395,7 +4543,6 @@ std::shared_ptr<zir::Type> Binder::mapType(const TypeNode &typeNode) {
       return nullptr;
     }
     if (typeSymbol->isUnsafe) {
-      requireUnsafeEnabled(typeNode.span, "unsafe struct types");
       requireUnsafeContext(typeNode.span, "unsafe struct types");
     }
     if (typeNode.isWeak) {
@@ -4430,8 +4577,6 @@ void Binder::visit(UnaryExpr &node) {
 
   auto type = expr->type;
   if (node.op_ == "&") {
-    requireUnsafeEnabled(node.span, "address-of");
-
     bool isLValue =
         dynamic_cast<BoundVariableExpression *>(expr.get()) ||
         dynamic_cast<BoundIndexAccess *>(expr.get()) ||
@@ -4444,7 +4589,6 @@ void Binder::visit(UnaryExpr &node) {
 
     type = std::make_shared<zir::PointerType>(expr->type);
   } else if (node.op_ == "*") {
-    requireUnsafeEnabled(node.span, "pointer dereference");
     requireUnsafeContext(node.span, "pointer dereference");
     if (!isPointerType(type)) {
       error(node.span,
@@ -4542,7 +4686,6 @@ void Binder::visit(StructDeclarationNode &node) {
   int oldUnsafeTypeContextDepth = unsafeTypeContextDepth_;
   int oldExternTypeContextDepth = externTypeContextDepth_;
   if (node.isUnsafe_) {
-    requireUnsafeEnabled(node.span, "'unsafe struct'");
     ++unsafeTypeContextDepth_;
   }
   ++externTypeContextDepth_;
@@ -4585,7 +4728,6 @@ void Binder::visit(StructLiteralNode &node) {
   }
 
   if (typeSymbol->isUnsafe) {
-    requireUnsafeEnabled(node.span, "unsafe struct literals");
     requireUnsafeContext(node.span, "unsafe struct literals");
   }
 
