@@ -15,15 +15,15 @@ syntax match zapExtFunHeader "\<ext\>\s\+\<fun\>\s\+\zs[A-Za-z_][A-Za-z0-9_]*\>"
 syntax keyword zapStructure record struct class enum alias
 
 " Literals and comments
-syntax region zapString start=+"+ skip=+\\.+ end=+"+ contains=zapEscape
+syntax region zapString start=+"+ skip=+\\.+ end=+"+ oneline contains=zapEscape
 syntax match zapEscape +\\["\\abfnrtv0]+ contained
 syntax match zapEscape +\\x[0-9a-fA-F]\{2}+ contained
 syntax match zapEscape +\\u[0-9a-fA-F]\{4}+ contained
 syntax match zapEscape +\\U[0-9a-fA-F]\{8}+ contained
-syntax region zapChar start=+'+ skip=+\\.+ end=+'+ contains=zapEscape
+syntax region zapChar start=+'+ skip=+\\.+ end=+'+ oneline contains=zapEscape
 syntax match zapNumber "\<[0-9]\+\(\.[0-9]\+\)\?\>"
 syntax keyword zapBoolean true false null
-syntax match zapLineComment "//.*$" contains=@Spell
+syntax region zapLineComment start="//" end="$" contains=@Spell keepend
 
 " Namespaces and symbols
 syntax match zapNamespace "\<[A-Za-z_][A-Za-z0-9_]*\>\ze\s*\."
@@ -75,7 +75,8 @@ syntax match zapIftypeMatchType "\<iftype\>\s\+[A-Za-z_][A-Za-z0-9_]*\s*==\s*\zs
 syntax match zapLogicalOperator "&&\|||"
 syntax match zapComparisonOperator "==\|!=\|>=\|<=\|>\|<\ze\%([^A-Za-z_]\|$\)"
 syntax match zapAssignmentOperator "="
-syntax match zapArithmeticOperator "[+\-/%^~]"
+" Exclude // from arithmetic operator highlighting so line comments win.
+syntax match zapArithmeticOperator "\%(//\)\@![+\-/%^~]"
 syntax match zapUnaryOperator "!"
 syntax match zapPointerOperator "\%(^\|[^A-Za-z0-9_]\)\zs[&*]\ze\%([^=]\|$\)"
 
