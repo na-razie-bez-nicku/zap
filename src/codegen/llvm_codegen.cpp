@@ -426,7 +426,7 @@ llvm::Constant *LLVMCodeGen::lowerZIRConstant(const zir::Constant &constant) {
   if (ty->isIntegerTy(1)) {
     return llvm::ConstantInt::get(ty, literal == "true" ? 1 : 0);
   }
-  if (ty->isIntegerTy(8)) {
+  if (ty->isIntegerTy(8) && constant.getType()->getKind() == zir::TypeKind::Char) {
     if (literal == "null") {
       return llvm::ConstantInt::get(ty, 0, false);
     }
@@ -1956,53 +1956,65 @@ void LLVMCodeGen::visit(sema::BoundCast &node) {
     return;
   }
 
+  auto *srcConst = llvm::dyn_cast<llvm::Constant>(src);
+
   if (srcTy->isPointerTy() && destTy->isPointerTy()) {
-    lastValue_ = builder_.CreateBitCast(src, destTy);
+    lastValue_ = srcConst ? llvm::ConstantExpr::getBitCast(srcConst, destTy)
+                          : builder_.CreateBitCast(src, destTy);
   } else if (srcTy->isPointerTy() && destTy->isIntegerTy()) {
-    lastValue_ = builder_.CreatePtrToInt(src, destTy);
+    lastValue_ = srcConst ? llvm::ConstantExpr::getPtrToInt(srcConst, destTy)
+                          : builder_.CreatePtrToInt(src, destTy);
   } else if (srcTy->isIntegerTy() && destTy->isPointerTy()) {
-    lastValue_ = builder_.CreateIntToPtr(src, destTy);
+    lastValue_ = srcConst ? llvm::ConstantExpr::getIntToPtr(srcConst, destTy)
+                          : builder_.CreateIntToPtr(src, destTy);
   } else if (srcTy->isIntegerTy() && destTy->isIntegerTy()) {
     unsigned srcBits = srcTy->getIntegerBitWidth();
     unsigned destBits = destTy->getIntegerBitWidth();
 
     if (destBits > srcBits) {
       if (node.expression->type->isUnsigned()) {
-        lastValue_ = builder_.CreateZExt(src, destTy);
+        lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::ZExt, srcConst, destTy)
+                              : builder_.CreateZExt(src, destTy);
       } else {
-        lastValue_ = builder_.CreateSExt(src, destTy);
+        lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::SExt, srcConst, destTy)
+                              : builder_.CreateSExt(src, destTy);
       }
     } else if (destBits < srcBits) {
-      lastValue_ = builder_.CreateTrunc(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getTrunc(srcConst, destTy)
+                            : builder_.CreateTrunc(src, destTy);
     } else {
-      // Same bit width but different signedness in our ZIR, but LLVM doesn't
-      // care
       lastValue_ = src;
     }
   } else if (srcTy->isIntegerTy() && destTy->isFloatingPointTy()) {
     if (node.expression->type->isUnsigned()) {
-      lastValue_ = builder_.CreateUIToFP(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::UIToFP, srcConst, destTy)
+                            : builder_.CreateUIToFP(src, destTy);
     } else {
-      lastValue_ = builder_.CreateSIToFP(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::SIToFP, srcConst, destTy)
+                            : builder_.CreateSIToFP(src, destTy);
     }
   } else if (srcTy->isFloatingPointTy() && destTy->isIntegerTy()) {
     if (node.type->isUnsigned()) {
-      lastValue_ = builder_.CreateFPToUI(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::FPToUI, srcConst, destTy)
+                            : builder_.CreateFPToUI(src, destTy);
     } else {
-      lastValue_ = builder_.CreateFPToSI(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::FPToSI, srcConst, destTy)
+                            : builder_.CreateFPToSI(src, destTy);
     }
   } else if (srcTy->isFloatingPointTy() && destTy->isFloatingPointTy()) {
     if (srcTy->getPrimitiveSizeInBits() < destTy->getPrimitiveSizeInBits()) {
-      lastValue_ = builder_.CreateFPExt(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::FPExt, srcConst, destTy)
+                            : builder_.CreateFPExt(src, destTy);
     } else if (srcTy->getPrimitiveSizeInBits() >
                destTy->getPrimitiveSizeInBits()) {
-      lastValue_ = builder_.CreateFPTrunc(src, destTy);
+      lastValue_ = srcConst ? llvm::ConstantExpr::getCast(llvm::Instruction::FPTrunc, srcConst, destTy)
+                            : builder_.CreateFPTrunc(src, destTy);
     } else {
       lastValue_ = src;
     }
   } else {
-    // Fallback or other pointer casts
-    lastValue_ = builder_.CreateBitCast(src, destTy);
+    lastValue_ = srcConst ? llvm::ConstantExpr::getBitCast(srcConst, destTy)
+                          : builder_.CreateBitCast(src, destTy);
   }
 }
 

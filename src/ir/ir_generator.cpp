@@ -1507,10 +1507,10 @@ void BoundIRGenerator::visit(sema::BoundCast &node) {
       if (srcTy && dstTy && srcTy->isInteger() && dstTy->isInteger()) {
         try {
           if (dstTy->isUnsigned()) {
-            auto v = static_cast<uint64_t>(std::stoull(folded));
+            auto v = static_cast<uint64_t>(std::stoull(folded, nullptr, 0));
             folded = std::to_string(v);
           } else {
-            auto v = static_cast<int64_t>(std::stoll(folded));
+            auto v = static_cast<int64_t>(std::stoll(folded, nullptr, 0));
             folded = std::to_string(v);
           }
         } catch (...) {
@@ -1528,10 +1528,10 @@ void BoundIRGenerator::visit(sema::BoundCast &node) {
                  dstTy->isFloatingPoint()) {
         try {
           if (srcTy->isUnsigned()) {
-            auto v = static_cast<double>(std::stoull(folded));
+            auto v = static_cast<double>(std::stoull(folded, nullptr, 0));
             folded = std::to_string(v);
           } else {
-            auto v = static_cast<double>(std::stoll(folded));
+            auto v = static_cast<double>(std::stoll(folded, nullptr, 0));
             folded = std::to_string(v);
           }
         } catch (...) {
