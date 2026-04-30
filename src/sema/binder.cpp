@@ -3070,10 +3070,12 @@ void Binder::visit(VarDecl &node) {
     type = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Void);
   }
 
+  bool isRef = node.type_ && node.type_->isReference;
+
   std::unique_ptr<BoundExpression> initializer = nullptr;
   if (node.initializer_) {
     initializer = bindExpressionWithExpected(node.initializer_.get(), type);
-    if (initializer) {
+    if (initializer && !isRef) {
       if (!canConvert(initializer->type, type)) {
         error(node.initializer_->span, "Cannot assign expression of type '" +
                                            renderTypeForUser(initializer->type) +
@@ -3083,11 +3085,13 @@ void Binder::visit(VarDecl &node) {
         initializer = wrapInCast(std::move(initializer), type);
       }
     }
+  } else if (isRef) {
+    error(node.span, "Reference variable '" + node.name_ + "' must be initialized.");
   }
 
   if (!symbol) {
     symbol = std::make_shared<VariableSymbol>(
-        node.name_, type, false, false,
+        node.name_, type, false, isRef,
         node.isGlobal_ ? (node.isExternal_ ? node.name_ : mangleName(currentModuleLinkPath(), node.name_))
                        : node.name_,
         modules_[currentModuleId_].info->moduleName, node.visibility_);
@@ -3096,6 +3100,7 @@ void Binder::visit(VarDecl &node) {
       error(node.span, "Variable '" + node.name_ + "' already declared.");
     }
   }
+  symbol->is_ref = isRef;
 
   auto boundDecl = std::make_unique<BoundVariableDeclaration>(
       symbol, std::move(initializer));

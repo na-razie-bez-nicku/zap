@@ -226,6 +226,24 @@ void BoundIRGenerator::visit(sema::BoundVariableDeclaration &node) {
     return;
   }
 
+  if (node.symbol->is_ref) {
+    // Ref var: alloca a pointer slot, store the address of the initializer
+    auto ptrType = std::make_shared<PointerType>(type);
+    auto refReg = createRegister(std::make_shared<PointerType>(ptrType));
+    currentBlock_->addInstruction(std::make_unique<AllocaInst>(refReg, ptrType));
+    symbolMap_[node.symbol] = refReg;
+    if (node.initializer) {
+      bool old = evaluateAsAddress_;
+      evaluateAsAddress_ = true;
+      node.initializer->accept(*this);
+      evaluateAsAddress_ = old;
+      auto addr = valueStack_.top();
+      valueStack_.pop();
+      currentBlock_->addInstruction(std::make_unique<StoreInst>(addr, refReg));
+    }
+    return;
+  }
+
   auto reg = createRegister(std::make_shared<PointerType>(type));
   currentBlock_->addInstruction(std::make_unique<AllocaInst>(reg, type));
   symbolMap_[node.symbol] = reg;
