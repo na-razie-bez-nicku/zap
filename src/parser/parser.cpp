@@ -705,6 +705,17 @@ Parser::typeNodeFromQualifiedExpression(const ExpressionNode *expr) {
 }
 
 std::unique_ptr<TypeNode> Parser::parseType() {
+  if (peek().type == TokenType::REF) {
+    Token refToken = eat(TokenType::REF);
+    auto innerType = parseType();
+    if (innerType) {
+      innerType->isReference = true;
+      _builder.setSpan(innerType.get(),
+                       SourceSpan::merge(refToken.span, innerType->span));
+    }
+    return innerType;
+  }
+
   if (peek().type == TokenType::WEAK) {
     Token weakToken = eat(TokenType::WEAK);
     auto innerType = parseType();

@@ -1924,6 +1924,21 @@ void LLVMCodeGen::visit(sema::BoundVariableDeclaration &node) {
   auto *ty = toLLVMType(*node.symbol->type);
 
   if (currentFn_) {
+    if (node.symbol->is_ref) {
+      // Ref var: alloca a pointer slot, store the address of the initializer
+      auto *ptrTy = llvm::PointerType::getUnqual(ty);
+      auto *alloca = createEntryAlloca(currentFn_, node.symbol->name, ptrTy);
+      localValues_[node.symbol->name] = alloca;
+      if (node.initializer) {
+        bool old = evaluateAsAddr_;
+        evaluateAsAddr_ = true;
+        node.initializer->accept(*this);
+        evaluateAsAddr_ = old;
+        builder_.CreateStore(lastValue_, alloca);
+      }
+      return;
+    }
+
     auto *alloca = createEntryAlloca(currentFn_, node.symbol->name, ty);
     localValues_[node.symbol->name] = alloca;
     if (isClassType(node.symbol->type)) {
