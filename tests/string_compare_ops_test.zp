@@ -1,0 +1,36 @@
+import "std/string";
+
+fun main() Int {
+  var a: String = "alpha";
+  var b: String = "alpha";
+  var c: String = "beta";
+  var av: string.StringView = string.view(a);
+  var bv: string.StringView = string.view(b);
+
+  if !(a == b) {
+    return 1;
+  }
+  if a != b {
+    return 2;
+  }
+  if !(a != c) {
+    return 3;
+  }
+  if a == c {
+    return 4;
+  }
+  if !(a == "alpha") {
+    return 5;
+  }
+  if "alpha" != a {
+    return 6;
+  }
+  if !(av == bv) {
+    return 7;
+  }
+  if av != b {
+    return 8;
+  }
+
+  return 0;
+}

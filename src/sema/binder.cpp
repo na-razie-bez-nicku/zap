@@ -3389,9 +3389,14 @@ void Binder::visit(BinExpr &node) {
          isNullType(leftType) || isNullType(rightType))) {
     }
 
-    // Reject comparisons of struct types
-    if (leftType->getKind() == zir::TypeKind::Record ||
-        rightType->getKind() == zir::TypeKind::Record) {
+    bool stringComparison =
+        isStringType(leftType) && isStringType(rightType) &&
+        (node.op_ == "==" || node.op_ == "!=");
+
+    // Reject comparisons of struct types except String/StringView equality.
+    if (!stringComparison &&
+        (leftType->getKind() == zir::TypeKind::Record ||
+         rightType->getKind() == zir::TypeKind::Record)) {
       error(SourceSpan::merge(node.left_->span, node.right_->span),
             "Cannot compare struct types '" + renderTypeForUser(leftType) +
                 "' and '" + renderTypeForUser(rightType) + "'");
@@ -3418,6 +3423,11 @@ void Binder::visit(BinExpr &node) {
       auto promotedType = getPromotedType(leftType, rightType);
       left = wrapInCast(std::move(left), promotedType);
       right = wrapInCast(std::move(right), promotedType);
+    } else if (stringComparison) {
+      auto stringViewType =
+          std::make_shared<zir::RecordType>("StringView", "StringView");
+      left = wrapInCast(std::move(left), stringViewType);
+      right = wrapInCast(std::move(right), stringViewType);
     }
     resultType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
   } else if (node.op_ == "&&" || node.op_ == "||") {
@@ -5572,6 +5582,10 @@ bool Binder::canConvert(std::shared_ptr<zir::Type> from,
     return true;
   if (isStringType(from) && isStringType(to))
     return true;
+  if (isStringType(from) && isPointerType(to)) {
+    auto ptrType = std::static_pointer_cast<zir::PointerType>(to);
+    return ptrType && ptrType->getBaseType()->getKind() == zir::TypeKind::Char;
+  }
   if (from->getKind() == zir::TypeKind::Class &&
       to->getKind() == zir::TypeKind::Class) {
     auto fromClass = std::static_pointer_cast<zir::ClassType>(from);
@@ -5684,6 +5698,11 @@ std::shared_ptr<zir::Type>
 Binder::getCVariadicArgumentType(std::shared_ptr<zir::Type> type) {
   if (!type)
     return nullptr;
+
+  if (isStringType(type)) {
+    return std::make_shared<zir::PointerType>(
+        std::make_shared<zir::PrimitiveType>(zir::TypeKind::Char));
+  }
 
   if (isPointerType(type))
     return type;
