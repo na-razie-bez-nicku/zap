@@ -1106,6 +1106,18 @@ void LLVMCodeGen::emitZIRInstruction(const zir::Instruction &inst) {
                                cmpInst.getLhs()->getTypeName() + " vs " +
                                cmpInst.getRhs()->getTypeName());
     }
+    if (isStringLLVMStructType(lhsTy) && isStringLLVMStructType(rhsTy) &&
+        (pred == "eq" || pred == "ne")) {
+      auto *boolTy = llvm::Type::getInt1Ty(ctx_);
+      auto *strTy = lhsTy;
+      auto *eqFnTy = llvm::FunctionType::get(boolTy, {strTy, strTy}, false);
+      auto eqCallee = module_->getOrInsertFunction("eq", eqFnTy);
+      auto *isEq = builder_.CreateCall(eqFnTy, eqCallee.getCallee(), {lhs, rhs},
+                                       "str.eq");
+      zirValueMap_[cmpInst.getResult().get()] =
+          pred == "eq" ? isEq : builder_.CreateNot(isEq, "str.ne");
+      return;
+    }
     if (lhsTy->isFloatingPointTy()) {
       if (pred == "eq")
         result = builder_.CreateFCmpOEQ(lhs, rhs);
@@ -2464,6 +2476,16 @@ void LLVMCodeGen::visit(sema::BoundBinaryExpression &node) {
     lastValue_ = builder_.CreateOr(lhs, rhs);
   else if (node.op == "^")
     lastValue_ = builder_.CreateXor(lhs, rhs);
+  else if ((node.op == "==" || node.op == "!=") &&
+           isStringType(node.left->type) && isStringType(node.right->type)) {
+    auto *boolTy = llvm::Type::getInt1Ty(ctx_);
+    auto *strTy = lhs->getType();
+    auto *eqFnTy = llvm::FunctionType::get(boolTy, {strTy, strTy}, false);
+    auto eqCallee = module_->getOrInsertFunction("eq", eqFnTy);
+    auto *isEq = builder_.CreateCall(eqFnTy, eqCallee.getCallee(), {lhs, rhs},
+                                     "str.eq");
+    lastValue_ = node.op == "==" ? isEq : builder_.CreateNot(isEq, "str.ne");
+  }
   else if (node.op == "==")
     lastValue_ = isFP ? builder_.CreateFCmpOEQ(lhs, rhs)
                       : builder_.CreateICmpEQ(lhs, rhs);
