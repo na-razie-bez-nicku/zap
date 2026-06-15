@@ -38,33 +38,42 @@ std::shared_ptr<FunctionSymbol> Binder::ensureGenericFunctionInstantiation(
     }
   }
   if (!missing.empty()) {
-    std::string msg = "Missing generic type arguments for function '" +
-                      baseFunction->name + "': ";
+    std::string msg;
+    msg.reserve(64);
+    msg += "Missing generic type arguments for function '";
+    msg += baseFunction->name;
+    msg += "': ";
     for (size_t i = 0; i < missing.size(); ++i) {
-      if (i != 0) {
+      if (i != 0)
         msg += ", ";
-      }
       msg += missing[i];
     }
     error(callSpan, msg);
     return nullptr;
   }
 
-  std::string cacheKey = baseFunction->linkName + "<";
-  for (size_t i = 0; i < baseFunction->genericParameterNames.size(); ++i) {
-    if (i != 0) {
-      cacheKey += ",";
+  std::string cacheKey;
+  {
+    size_t estimatedSize = baseFunction->linkName.size() + 2 +
+                           baseFunction->genericParameterNames.size() * 16;
+    cacheKey.reserve(estimatedSize);
+    cacheKey += baseFunction->linkName;
+    cacheKey += '<';
+    for (size_t i = 0; i < baseFunction->genericParameterNames.size(); ++i) {
+      if (i != 0)
+        cacheKey += ',';
+      const auto &name = baseFunction->genericParameterNames[i];
+      auto it =
+          std::find_if(genericBindings.begin(), genericBindings.end(),
+                       [&](const auto &entry) { return entry.first == name; });
+      cacheKey += name;
+      cacheKey += '=';
+      cacheKey += (it != genericBindings.end() && it->second)
+                      ? it->second->toString()
+                      : "<?>";
     }
-    const auto &name = baseFunction->genericParameterNames[i];
-    auto it =
-        std::find_if(genericBindings.begin(), genericBindings.end(),
-                     [&](const auto &entry) { return entry.first == name; });
-    cacheKey +=
-        name + "=" +
-        (it != genericBindings.end() && it->second ? it->second->toString()
-                                                   : std::string("<?>"));
+    cacheKey += '>';
   }
-  cacheKey += ">";
 
   auto cachedIt = genericFunctionInstantiations_.find(cacheKey);
   if (cachedIt != genericFunctionInstantiations_.end()) {
