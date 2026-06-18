@@ -10,6 +10,7 @@ enum class ValueKind {
   Register,
   Constant,
   AggregateConstant,
+  ArrayConstant,
   Argument,
   Global
 };
@@ -69,6 +70,23 @@ public:
   std::shared_ptr<Type> getType() const override { return type; }
 
   const std::vector<FieldValue> &getFields() const { return fields; }
+};
+
+class ArrayConstant : public Value {
+  std::shared_ptr<Type> type;
+  std::vector<std::shared_ptr<Value>> elements;
+
+public:
+  ArrayConstant(std::shared_ptr<Type> t, std::vector<std::shared_ptr<Value>> e)
+      : type(std::move(t)), elements(std::move(e)) {}
+
+  ValueKind getKind() const override { return ValueKind::ArrayConstant; }
+  std::string getName() const override { return "<array>"; }
+  std::shared_ptr<Type> getType() const override { return type; }
+
+  const std::vector<std::shared_ptr<Value>> &getElements() const {
+    return elements;
+  }
 };
 
 class Argument : public Value {

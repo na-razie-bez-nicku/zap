@@ -38,6 +38,36 @@ std::string renderTypeForUser(const std::shared_ptr<Type> &type) {
 }
 } // namespace
 
+std::shared_ptr<Value> BoundIRGenerator::lowerConstantExpression(
+    const sema::BoundExpression &expression) {
+  if (auto literal = dynamic_cast<const sema::BoundLiteral *>(&expression)) {
+    return std::make_shared<Constant>(literal->value, literal->type);
+  }
+
+  if (auto array = dynamic_cast<const sema::BoundArrayLiteral *>(&expression)) {
+    std::vector<std::shared_ptr<Value>> elements;
+    elements.reserve(array->elements.size());
+    for (const auto &element : array->elements) {
+      auto value = lowerConstantExpression(*element);
+      if (!value) {
+        return nullptr;
+      }
+      elements.push_back(std::move(value));
+    }
+    return std::make_shared<ArrayConstant>(array->type, std::move(elements));
+  }
+
+  if (auto cast = dynamic_cast<const sema::BoundCast *>(&expression)) {
+    auto value = lowerConstantExpression(*cast->expression);
+    if (auto constant = std::dynamic_pointer_cast<Constant>(value)) {
+      return std::make_shared<Constant>(constant->getLiteral(), cast->type);
+    }
+    return value;
+  }
+
+  return nullptr;
+}
+
 bool BoundIRGenerator::isFailableType(const std::shared_ptr<Type> &type) const {
   if (!type || type->getKind() != TypeKind::Record) {
     return false;
@@ -245,9 +275,14 @@ void BoundIRGenerator::visit(sema::BoundVariableDeclaration &node) {
     }
     std::shared_ptr<Value> initializer = nullptr;
     if (node.initializer) {
-      node.initializer->accept(*this);
-      initializer = valueStack_.top();
-      valueStack_.pop();
+      initializer = lowerConstantExpression(*node.initializer);
+      if (!initializer) {
+        node.initializer->accept(*this);
+        if (!valueStack_.empty()) {
+          initializer = valueStack_.top();
+          valueStack_.pop();
+        }
+      }
     }
     auto global =
         std::make_shared<Global>(node.symbol->name, node.symbol->linkName, type,

@@ -138,6 +138,7 @@ private:
   llvm::Constant *lowerZIRConstant(const zir::Constant &constant);
   llvm::Constant *
   lowerZIRAggregateConstant(const zir::AggregateConstant &constant);
+  llvm::Constant *lowerZIRArrayConstant(const zir::ArrayConstant &constant);
   llvm::Value *lowerZIRCast(llvm::Value *src,
                             const std::shared_ptr<zir::Type> &sourceType,
                             const std::shared_ptr<zir::Type> &targetType);

@@ -72,6 +72,8 @@ private:
   std::shared_ptr<Value> compoundTargetAddr_ = nullptr;
   std::shared_ptr<Value> createRegister(std::shared_ptr<Type> type);
   std::string createBlockLabel(const std::string &prefix);
+  std::shared_ptr<Value>
+  lowerConstantExpression(const sema::BoundExpression &expression);
 
   bool isFailableType(const std::shared_ptr<Type> &type) const;
   std::shared_ptr<Type>

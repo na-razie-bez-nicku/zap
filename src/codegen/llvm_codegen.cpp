@@ -253,6 +253,10 @@ void LLVMCodeGen::generate(const zir::Module &module) {
         initializer = lowerZIRAggregateConstant(
             static_cast<const zir::AggregateConstant &>(
                 *global->getInitializer()));
+      } else if (global->getInitializer()->getKind() ==
+                 zir::ValueKind::ArrayConstant) {
+        initializer = lowerZIRArrayConstant(
+            static_cast<const zir::ArrayConstant &>(*global->getInitializer()));
       }
     }
     if (!initializer) {
@@ -767,6 +771,63 @@ LLVMCodeGen::lowerZIRAggregateConstant(const zir::AggregateConstant &constant) {
   return llvm::ConstantStruct::get(structTy, elems);
 }
 
+llvm::Constant *
+LLVMCodeGen::lowerZIRArrayConstant(const zir::ArrayConstant &constant) {
+  auto *ty = toLLVMType(*constant.getType());
+  auto *arrayTy = llvm::dyn_cast<llvm::ArrayType>(ty);
+  if (!arrayTy) {
+    return llvm::Constant::getNullValue(ty);
+  }
+
+  std::vector<llvm::Constant *> elems;
+  elems.reserve(arrayTy->getNumElements());
+  for (const auto &element : constant.getElements()) {
+    llvm::Constant *elementConst = nullptr;
+    if (element->getKind() == zir::ValueKind::Constant) {
+      elementConst =
+          lowerZIRConstant(static_cast<const zir::Constant &>(*element));
+    } else if (element->getKind() == zir::ValueKind::AggregateConstant) {
+      elementConst = lowerZIRAggregateConstant(
+          static_cast<const zir::AggregateConstant &>(*element));
+    } else if (element->getKind() == zir::ValueKind::ArrayConstant) {
+      elementConst = lowerZIRArrayConstant(
+          static_cast<const zir::ArrayConstant &>(*element));
+    }
+
+    if (elementConst) {
+      auto *expectedTy = arrayTy->getElementType();
+      if (elementConst->getType() != expectedTy) {
+        if (elementConst->getType()->isIntegerTy() &&
+            expectedTy->isIntegerTy()) {
+          auto srcBits = elementConst->getType()->getIntegerBitWidth();
+          auto dstBits = expectedTy->getIntegerBitWidth();
+          if (dstBits < srcBits) {
+            elementConst = llvm::cast<llvm::Constant>(
+                llvm::ConstantExpr::getTrunc(elementConst, expectedTy));
+          } else if (dstBits > srcBits) {
+            elementConst =
+                llvm::cast<llvm::Constant>(llvm::ConstantExpr::getCast(
+                    llvm::Instruction::SExt, elementConst, expectedTy));
+          }
+        } else {
+          elementConst = llvm::cast<llvm::Constant>(
+              llvm::ConstantExpr::getBitCast(elementConst, expectedTy));
+        }
+      }
+    }
+
+    elems.push_back(
+        elementConst ? elementConst
+                     : llvm::Constant::getNullValue(arrayTy->getElementType()));
+  }
+
+  while (elems.size() < arrayTy->getNumElements()) {
+    elems.push_back(llvm::Constant::getNullValue(arrayTy->getElementType()));
+  }
+
+  return llvm::ConstantArray::get(arrayTy, elems);
+}
+
 llvm::Value *
 LLVMCodeGen::lowerZIRValue(const std::shared_ptr<zir::Value> &value) {
   if (!value) {
@@ -778,6 +839,10 @@ LLVMCodeGen::lowerZIRValue(const std::shared_ptr<zir::Value> &value) {
   if (value->getKind() == zir::ValueKind::AggregateConstant) {
     return lowerZIRAggregateConstant(
         static_cast<const zir::AggregateConstant &>(*value));
+  }
+  if (value->getKind() == zir::ValueKind::ArrayConstant) {
+    return lowerZIRArrayConstant(
+        static_cast<const zir::ArrayConstant &>(*value));
   }
   if (value->getKind() == zir::ValueKind::Global) {
     const auto &g = static_cast<const zir::Global &>(*value);
