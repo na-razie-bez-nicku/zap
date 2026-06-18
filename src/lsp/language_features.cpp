@@ -1,6 +1,7 @@
 #include "lsp/language_features.hpp"
 
 #include "ast/nodes.hpp"
+#include "lsp/language_feature_helpers.hpp"
 #include "lsp/protocol_messages.hpp"
 #include "lsp/protocol_utils.hpp"
 #include "lsp/symbol_index.hpp"
@@ -293,11 +294,20 @@ splitQualifiedName(std::string_view qualifiedName) {
           std::string(qualifiedName.substr(dot + 1))};
 }
 
+std::string stripGenericArguments(std::string_view typeName) {
+  size_t genericStart = typeName.find('<');
+  if (genericStart == std::string_view::npos) {
+    return std::string(typeName);
+  }
+  return std::string(typeName.substr(0, genericStart));
+}
+
 const ClassDecl *resolveClassByTypeName(const ProjectState &project,
                                         const sema::ModuleInfo &module,
                                         std::string_view typeName,
                                         bool publicOnly = false) {
-  auto [qualifier, localName] = splitQualifiedName(typeName);
+  std::string normalizedTypeName = stripGenericArguments(typeName);
+  auto [qualifier, localName] = splitQualifiedName(normalizedTypeName);
   if (localName.empty()) {
     return nullptr;
   }
@@ -345,11 +355,24 @@ resolveClassTypeNameFromSemanticType(const ProjectState &project,
   auto classType = std::static_pointer_cast<zir::ClassType>(type);
   std::string name = classType->getName();
   if (isClassTypeName(project, module, name)) {
-    return name;
+    return stripGenericArguments(name);
+  }
+  if (classType->isGenericInstance()) {
+    const std::string &baseName = classType->getGenericBaseName();
+    if (isClassTypeName(project, module, baseName)) {
+      return stripGenericArguments(baseName);
+    }
+    auto [__, baseLocalName] = splitQualifiedName(baseName);
+    if (!baseLocalName.empty() &&
+        isClassTypeName(project, module, baseLocalName)) {
+      return stripGenericArguments(baseLocalName);
+    }
   }
   auto [_, localName] = splitQualifiedName(name);
-  if (!localName.empty() && isClassTypeName(project, module, localName)) {
-    return localName;
+  std::string normalizedLocalName = stripGenericArguments(localName);
+  if (!normalizedLocalName.empty() &&
+      isClassTypeName(project, module, normalizedLocalName)) {
+    return normalizedLocalName;
   }
   return std::nullopt;
 }
@@ -385,6 +408,20 @@ resolveVariableClassType(const ProjectState &project,
     return resolveClassTypeNameFromTypeNode(project, module, visible.typeNode);
   }
   return std::nullopt;
+}
+
+std::shared_ptr<zir::RecordType>
+resolveVariableRecordType(const ProjectState &project,
+                          const sema::ModuleInfo &module, size_t offset,
+                          std::string_view name) {
+  auto visible = findVisibleSymbolInfo(*module.root, offset, name);
+  if (visible.node) {
+    auto type = project.semanticInfo.typeFor(visible.node);
+    if (type && type->getKind() == zir::TypeKind::Record) {
+      return std::static_pointer_cast<zir::RecordType>(type);
+    }
+  }
+  return nullptr;
 }
 
 const ParameterNode *findClassField(const ClassDecl *cls,
@@ -1069,44 +1106,6 @@ std::vector<LspSymbol> collectImportedSymbols(const ProjectState &project,
   return symbols;
 }
 
-std::vector<LspSymbol> collectCompletionSymbols(const std::string &uri,
-                                                const ProjectState &project,
-                                                size_t offset) {
-  std::vector<LspSymbol> symbols;
-  auto path = uriToPath(uri);
-  if (!path) {
-    return symbols;
-  }
-  auto docIt =
-      project.moduleMap.find(std::filesystem::weakly_canonical(*path).string());
-  if (docIt == project.moduleMap.end()) {
-    return symbols;
-  }
-
-  const sema::ModuleInfo &module = *docIt->second;
-  auto topLevel = collectTopLevelSymbols(module, uri);
-  symbols.insert(symbols.end(), topLevel.begin(), topLevel.end());
-
-  auto imported = collectImportedSymbols(project, module);
-  symbols.insert(symbols.end(), imported.begin(), imported.end());
-
-  auto locals = collectLocalSymbols(*module.root, offset, uri);
-  symbols.insert(symbols.end(), locals.begin(), locals.end());
-
-  static constexpr std::pair<const char *, int64_t> builtinTypes[] = {
-      {"Int", 22},     {"Int8", 22},   {"Int16", 22}, {"Int32", 22},
-      {"Int64", 22},   {"UInt", 22},   {"UInt8", 22}, {"UInt16", 22},
-      {"UInt32", 22},  {"UInt64", 22}, {"Float", 22}, {"Float32", 22},
-      {"Float64", 22}, {"Bool", 22},   {"Void", 22},  {"Char", 22},
-      {"String", 22}};
-  for (const auto &[name, kind] : builtinTypes) {
-    symbols.push_back(
-        *makeSymbol(uri, name, SourceSpan(), kind, Visibility::Public));
-  }
-
-  return symbols;
-}
-
 std::optional<LspSymbol> resolveDefinition(const Workspace &workspace,
                                            const std::string &uri,
                                            const ProjectState &project,
@@ -1206,106 +1205,6 @@ std::optional<LspSymbol> resolveDefinition(const Workspace &workspace,
   }
 
   return std::nullopt;
-}
-
-JsonObject::List makeCompletionItems(const std::string &uri,
-                                     const std::string &source,
-                                     const ProjectState &project,
-                                     size_t offset) {
-  JsonObject::List items;
-  if (auto member = memberAccessBeforeCursor(source, offset)) {
-    const auto &[base, _] = *member;
-    std::string moduleId;
-    auto path = uriToPath(uri);
-    if (path) {
-      moduleId = std::filesystem::weakly_canonical(*path).string();
-    }
-    auto moduleIt = project.moduleMap.find(moduleId);
-    if (moduleIt == project.moduleMap.end()) {
-      return items;
-    }
-
-    for (const auto &import : moduleIt->second->imports) {
-      for (const auto &targetId : import.targetModuleIds) {
-        auto targetIt = project.moduleMap.find(targetId);
-        if (targetIt == project.moduleMap.end()) {
-          continue;
-        }
-        if (effectiveImportAlias(import, *targetIt->second) != base) {
-          continue;
-        }
-        std::set<std::string> visited;
-        for (const auto &symbol : collectExportedSymbolsRecursive(
-                 project, *targetIt->second, visited)) {
-          items.push_back(makeCompletionItem(symbol, "imported member"));
-        }
-      }
-    }
-
-    if (base.find('.') == std::string::npos) {
-      if (auto classType = resolveVariableClassType(project, *moduleIt->second,
-                                                    offset, base)) {
-        if (auto cls = resolveClassByTypeName(project, *moduleIt->second,
-                                              *classType)) {
-          std::set<std::string> seenMembers;
-          const ClassDecl *current = cls;
-          while (current) {
-            for (const auto &field : current->fields_) {
-              if (!field || !seenMembers.insert(field->name).second) {
-                continue;
-              }
-              items.push_back(
-                  makeCompletionItem(*makeSymbol(uri, field->name, field->span,
-                                                 8, field->visibility_),
-                                     "field"));
-            }
-            for (const auto &method : current->methods_) {
-              if (!method || !seenMembers.insert(method->name_).second) {
-                continue;
-              }
-              auto detail = method->name_;
-              if (auto signature = signatureForNode(method.get())) {
-                detail = signature->label;
-              }
-              items.push_back(makeCompletionItem(
-                  *makeSymbol(uri, method->name_, method->span, 2,
-                              method->visibility_),
-                  detail));
-            }
-            if (!current->baseType_) {
-              break;
-            }
-            current =
-                resolveClassByTypeName(project, *moduleIt->second,
-                                       current->baseType_->qualifiedName());
-          }
-        }
-      }
-    }
-    return items;
-  }
-
-  std::vector<LspSymbol> symbols =
-      collectCompletionSymbols(uri, project, offset);
-  std::set<std::string> seen;
-  static constexpr const char *keywords[] = {
-      "fun",   "return", "if",    "else",  "iftype", "while",  "var",
-      "const", "import", "pub",   "priv",  "prot",   "struct", "record",
-      "class", "enum",   "alias", "ext",   "global", "break",  "continue",
-      "ref",   "as",     "new",   "self",  "where",  "unsafe", "weak",
-      "fail",  "or",     "for",   "match", "module", "impl",   "static"};
-  for (const char *keyword : keywords) {
-    if (seen.insert(keyword).second) {
-      items.push_back(makeCompletionItem(
-          *makeSymbol(uri, keyword, SourceSpan(), 14), "keyword"));
-    }
-  }
-  for (const auto &symbol : symbols) {
-    if (seen.insert(symbol.name).second) {
-      items.push_back(makeCompletionItem(symbol));
-    }
-  }
-  return items;
 }
 
 int64_t chooseActiveSignature(const std::vector<LspSignature> &signatures,

@@ -70,6 +70,18 @@ def completion_labels(proc, uri, line, character, request_id):
     return {item["label"] for item in response["result"]}
 
 
+def completion_items(proc, uri, line, character, request_id):
+    response = request(
+        proc,
+        "textDocument/completion",
+        {"textDocument": {"uri": uri}, "position": {"line": line, "character": character}},
+        request_id,
+    )
+    if "error" in response:
+        raise AssertionError(response["error"])
+    return response["result"]
+
+
 def open_document(proc, path, text):
     uri = file_uri(path)
     pathlib.Path(path).write_text(text)
@@ -181,7 +193,98 @@ fun main() Int {
                 "inc" in labels
             ), "member completion missing for inferred local class variable"
 
-        request(proc, "shutdown", None, 6)
+            member_prefix_items = completion_items(proc, inferred_uri, 8, 13, 6)
+            member_prefix_labels = {item["label"] for item in member_prefix_items}
+            assert (
+                "inc" in member_prefix_labels
+            ), "member completion missing after partially typed member name"
+            assert (
+                "return" not in member_prefix_labels
+            ), "member completion leaked keyword suggestions"
+            assert (
+                "Counter" not in member_prefix_labels
+            ), "member completion leaked top-level symbols"
+
+            record_member_source = """record test {
+    a: Int
+}
+
+fun main() Int {
+    var b: test = test{a: 5};
+    b.
+    return 0;
+}
+"""
+            record_uri = open_document(
+                proc, temp / "record_member.zp", record_member_source
+            )
+            labels = completion_labels(proc, record_uri, 6, 6, 7)
+            assert "a" in labels, "record field missing from member completion"
+
+            generic_class_source = """fun main() Int {
+    var a = new List<String>();
+    a.
+    return 0;
+}
+"""
+            generic_uri = open_document(
+                proc, temp / "generic_class_member.zp", generic_class_source
+            )
+            labels = completion_labels(proc, generic_uri, 2, 6, 8)
+            assert "len" in labels, "generic class method missing from member completion"
+            assert "push" in labels, "generic class method missing from member completion"
+
+            struct_literal_source = """struct test {
+    name: String,
+    age: Int16
+}
+
+fun main() Int {
+    var a = test{};
+    return 0;
+}
+"""
+            struct_literal_uri = open_document(
+                proc, temp / "struct_literal_completion.zp", struct_literal_source
+            )
+            labels = completion_labels(proc, struct_literal_uri, 6, 17, 9)
+            assert "name" in labels, "struct literal field missing from completion"
+            assert "age" in labels, "struct literal field missing from completion"
+            assert "return" not in labels, "struct literal completion leaked keywords"
+
+            record_literal_source = """record test {
+    name: String,
+    age: Int16
+}
+
+fun main() Int {
+    var a = test{};
+    return 0;
+}
+"""
+            record_literal_uri = open_document(
+                proc, temp / "record_literal_completion.zp", record_literal_source
+            )
+            labels = completion_labels(proc, record_literal_uri, 6, 17, 10)
+            assert "name" in labels, "record literal field missing from completion"
+            assert "age" in labels, "record literal field missing from completion"
+            assert "return" not in labels, "record literal completion leaked keywords"
+
+            imported_module_source = """import "std/convert";
+
+fun main() Int {
+   convert.
+   return 0;
+}
+"""
+            imported_module_uri = open_document(
+                proc, temp / "imported_module_completion.zp", imported_module_source
+            )
+            items = completion_items(proc, imported_module_uri, 3, 11, 11)
+            labels = [item["label"] for item in items]
+            assert labels.count("toInt") == 1, "overloaded imported member duplicated in completion"
+
+        request(proc, "shutdown", None, 12)
         notify(proc, "exit", {})
         proc.wait(timeout=5)
     finally:

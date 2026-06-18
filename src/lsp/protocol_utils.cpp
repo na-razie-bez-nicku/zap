@@ -270,6 +270,71 @@ memberAccessBeforeCursor(const std::string &source, size_t offset) {
 }
 
 std::optional<std::pair<std::string, std::string>>
+memberAccessAtCursor(const std::string &source, size_t offset) {
+  if (offset == 0 || offset > source.size()) {
+    return std::nullopt;
+  }
+
+  size_t pos = offset;
+  while (pos > 0 && std::isspace(static_cast<unsigned char>(source[pos - 1]))) {
+    --pos;
+  }
+
+  std::string memberPrefix;
+  if (pos > 0 && isIdentifierChar(source[pos - 1])) {
+    size_t prefixEnd = pos;
+    size_t prefixStart = prefixEnd;
+    while (prefixStart > 0 && isIdentifierChar(source[prefixStart - 1])) {
+      --prefixStart;
+    }
+    memberPrefix = source.substr(prefixStart, prefixEnd - prefixStart);
+    pos = prefixStart;
+  }
+
+  if (pos == 0 || source[pos - 1] != '.') {
+    return std::nullopt;
+  }
+
+  size_t end = pos - 1;
+  size_t start = end;
+  while (start > 0 && isIdentifierChar(source[start - 1])) {
+    --start;
+  }
+  if (start == end) {
+    return std::nullopt;
+  }
+  std::string base = source.substr(start, end - start);
+
+  size_t left = start;
+  while (left > 1) {
+    size_t dot = left;
+    while (dot > 0 &&
+           std::isspace(static_cast<unsigned char>(source[dot - 1]))) {
+      --dot;
+    }
+    if (dot == 0 || source[dot - 1] != '.') {
+      break;
+    }
+    size_t nameEnd = dot - 1;
+    size_t nameStart = nameEnd;
+    while (nameStart > 0 && isIdentifierChar(source[nameStart - 1])) {
+      --nameStart;
+    }
+    if (nameStart == nameEnd) {
+      break;
+    }
+    base = source.substr(nameStart, end - nameStart);
+    left = nameStart;
+  }
+
+  size_t split = base.find('.');
+  if (split != std::string::npos) {
+    base = base.substr(0, split);
+  }
+  return std::make_pair(base, memberPrefix);
+}
+
+std::optional<std::pair<std::string, std::string>>
 qualifiedIdentifierAtOffset(const std::string &source, size_t offset) {
   if (source.empty()) {
     return std::nullopt;

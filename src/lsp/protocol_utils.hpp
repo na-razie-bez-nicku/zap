@@ -36,6 +36,8 @@ std::optional<std::string> identifierAt(const std::string &source,
 std::optional<std::pair<std::string, std::string>>
 memberAccessBeforeCursor(const std::string &source, size_t offset);
 std::optional<std::pair<std::string, std::string>>
+memberAccessAtCursor(const std::string &source, size_t offset);
+std::optional<std::pair<std::string, std::string>>
 qualifiedIdentifierAtOffset(const std::string &source, size_t offset);
 
 } // namespace zap::lsp
