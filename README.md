@@ -3,7 +3,6 @@
 <p>
   <img src="art/Logo.svg" alt="Zap Logo" width="250"  align="left"/>
 </p>
-
 Systems programming that doesn't get in your way.
 
 You want predictable performance. No GC pauses. Real enums.
