@@ -20,9 +20,16 @@ fun main() Int {
     }
 
     var maxByte: Char = 255 as Char;
-    var maxByteCode: Int = maxByte as Int;
-    if maxByteCode != 255 {
+    if (maxByte as Int) != 255 {
         return 5;
+    }
+
+    var count: Int = 0;
+    while (maxByte as Int) == 255 && count < 1 {
+        count++;
+    }
+    if count != 1 {
+        return 6;
     }
 
     return 0;

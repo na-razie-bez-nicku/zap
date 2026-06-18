@@ -938,27 +938,15 @@ std::unique_ptr<ArrayLiteralNode> Parser::parseArrayLiteral() {
 std::unique_ptr<IfNode> Parser::parseIf() {
   Token ifKeyword = eat(TokenType::IF);
 
-  bool hasParen = false;
-  if (peek().type == TokenType::LPAREN) {
-    eat(TokenType::LPAREN);
-    hasParen = true;
-  }
-
   bool oldAllow = _allowStructLiteral;
-  if (!hasParen) {
-    _allowStructLiteral = false;
-  }
-  if (!hasParen && peek().type == TokenType::LBRACE) {
+  _allowStructLiteral = false;
+  if (peek().type == TokenType::LBRACE) {
     _diag.report(peek().span, DiagnosticLevel::Error,
                  "Expected condition expression after 'if'.");
     throw ParseError();
   }
   auto condition = parseExpression();
   _allowStructLiteral = oldAllow;
-
-  if (hasParen) {
-    eat(TokenType::RPAREN);
-  }
 
   eat(TokenType::LBRACE);
   auto thenBody = parseBody();
@@ -1032,22 +1020,10 @@ std::unique_ptr<IfTypeNode> Parser::parseIfType() {
 std::unique_ptr<WhileNode> Parser::parseWhile() {
   Token whileKeyword = eat(TokenType::WHILE);
 
-  bool hasParen = false;
-  if (peek().type == TokenType::LPAREN) {
-    eat(TokenType::LPAREN);
-    hasParen = true;
-  }
-
   bool oldAllow = _allowStructLiteral;
-  if (!hasParen) {
-    _allowStructLiteral = false;
-  }
+  _allowStructLiteral = false;
   auto condition = parseExpression();
   _allowStructLiteral = oldAllow;
-
-  if (hasParen) {
-    eat(TokenType::RPAREN);
-  }
 
   eat(TokenType::LBRACE);
   auto body = parseBody();
