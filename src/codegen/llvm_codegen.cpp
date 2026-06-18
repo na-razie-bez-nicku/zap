@@ -2485,7 +2485,8 @@ void LLVMCodeGen::visit(sema::BoundCast &node) {
     unsigned destBits = destTy->getIntegerBitWidth();
 
     if (destBits > srcBits) {
-      if (node.expression->type->isUnsigned()) {
+      if (node.expression->type->isUnsigned() ||
+          node.expression->type->getKind() == zir::TypeKind::Char) {
         lastValue_ = srcConst ? llvm::ConstantExpr::getCast(
                                     llvm::Instruction::ZExt, srcConst, destTy)
                               : builder_.CreateZExt(src, destTy);

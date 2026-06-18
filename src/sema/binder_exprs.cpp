@@ -342,10 +342,18 @@ void Binder::visit(CastExpr &node) {
   }
 
   bool castAllowed = false;
+  auto sourceKind = expr->type->getKind();
+  auto targetKind = targetType->getKind();
+  bool sourceIsChar = sourceKind == zir::TypeKind::Char;
+  bool targetIsChar = targetKind == zir::TypeKind::Char;
+
   if (isNumeric(expr->type) && isNumeric(targetType))
     castAllowed = true;
-  else if (expr->type->getKind() == zir::TypeKind::Enum &&
-           targetType->getKind() == zir::TypeKind::Int)
+  else if ((sourceIsChar && targetType->isInteger()) ||
+           (expr->type->isInteger() && targetIsChar))
+    castAllowed = true;
+  else if (sourceKind == zir::TypeKind::Enum &&
+           targetKind == zir::TypeKind::Int)
     castAllowed = true;
   else if ((isPointerType(expr->type) || isNullType(expr->type)) &&
            isPointerType(targetType))

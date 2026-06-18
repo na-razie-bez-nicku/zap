@@ -1,0 +1,29 @@
+fun main() Int {
+    var aCode: Int = 'A' as Int;
+    if aCode != 65 {
+        return 1;
+    }
+
+    var b: Char = 66 as Char;
+    if b != 'B' {
+        return 2;
+    }
+
+    var cCode: UInt8 = 'C' as UInt8;
+    if cCode != 67 {
+        return 3;
+    }
+
+    var d: Char = (68 as UInt8) as Char;
+    if d != 'D' {
+        return 4;
+    }
+
+    var maxByte: Char = 255 as Char;
+    var maxByteCode: Int = maxByte as Int;
+    if maxByteCode != 255 {
+        return 5;
+    }
+
+    return 0;
+}
