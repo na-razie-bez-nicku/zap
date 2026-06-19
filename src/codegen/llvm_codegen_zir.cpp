@@ -35,6 +35,7 @@ void LLVMCodeGen::generate(const zir::Module &module) {
 
   for (const auto &type : module.getTypes()) {
     if (type->getKind() == zir::TypeKind::Record ||
+        type->getKind() == zir::TypeKind::TaggedUnion ||
         type->getKind() == zir::TypeKind::Class) {
       toLLVMType(*type);
     }
@@ -972,6 +973,24 @@ void LLVMCodeGen::emitZIRInstruction(const zir::Instruction &inst) {
     if (baseType->getKind() == zir::TypeKind::Record) {
       auto recordType = std::static_pointer_cast<zir::RecordType>(baseType);
       auto *structTy = llvm::cast<llvm::StructType>(toLLVMType(*recordType));
+      llvm::Value *structPtr = ptr;
+      if (!pointerType) {
+        auto *tmp = createEntryAlloca(
+            currentFn_,
+            static_cast<const Register &>(*gepInst.getResult()).getRawName() +
+                ".addr",
+            structTy);
+        builder_.CreateStore(ptr, tmp);
+        structPtr = tmp;
+      }
+      gep = builder_.CreateStructGEP(
+          structTy, structPtr, static_cast<unsigned>(gepInst.getIndex()),
+          static_cast<const Register &>(*gepInst.getResult()).getRawName());
+    } else if (baseType->getKind() == zir::TypeKind::TaggedUnion) {
+      auto taggedUnionType =
+          std::static_pointer_cast<zir::TaggedUnionType>(baseType);
+      auto *structTy =
+          llvm::cast<llvm::StructType>(toLLVMType(*taggedUnionType));
       llvm::Value *structPtr = ptr;
       if (!pointerType) {
         auto *tmp = createEntryAlloca(

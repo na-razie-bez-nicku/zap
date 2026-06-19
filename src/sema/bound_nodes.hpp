@@ -27,8 +27,10 @@ class BoundArrayLiteral;
 class BoundIndexAccess;
 class BoundRecordDeclaration;
 class BoundEnumDeclaration;
+class BoundTaggedUnionDeclaration;
 class BoundMemberAccess;
 class BoundStructLiteral;
+class BoundTaggedUnionLiteral;
 class BoundModuleReference;
 class BoundIfStatement;
 class BoundWhileStatement;
@@ -71,8 +73,10 @@ public:
   virtual void visit(BoundIndexAccess &node) = 0;
   virtual void visit(BoundRecordDeclaration &node) = 0;
   virtual void visit(BoundEnumDeclaration &node) = 0;
+  virtual void visit(BoundTaggedUnionDeclaration &node) = 0;
   virtual void visit(BoundMemberAccess &node) = 0;
   virtual void visit(BoundStructLiteral &node) = 0;
+  virtual void visit(BoundTaggedUnionLiteral &node) = 0;
   virtual void visit(BoundModuleReference &node) = 0;
   virtual void visit(BoundIfStatement &node) = 0;
   virtual void visit(BoundWhileStatement &node) = 0;
@@ -656,6 +660,12 @@ public:
   void accept(BoundVisitor &v) override { v.visit(*this); }
 };
 
+class BoundTaggedUnionDeclaration : public BoundNode {
+public:
+  std::shared_ptr<zir::TaggedUnionType> type;
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+};
+
 class BoundMemberAccess : public BoundExpression {
 public:
   std::unique_ptr<BoundExpression> left;
@@ -668,6 +678,25 @@ public:
   void accept(BoundVisitor &v) override { v.visit(*this); }
   std::unique_ptr<BoundExpression> clone() const override {
     return std::make_unique<BoundMemberAccess>(left->clone(), member, type);
+  }
+};
+
+class BoundTaggedUnionLiteral : public BoundExpression {
+public:
+  std::string variantName;
+  int64_t tag;
+  std::unique_ptr<BoundExpression> payload;
+
+  BoundTaggedUnionLiteral(std::shared_ptr<zir::TaggedUnionType> t,
+                          std::string variant, int64_t variantTag,
+                          std::unique_ptr<BoundExpression> payloadExpr)
+      : BoundExpression(std::move(t)), variantName(std::move(variant)),
+        tag(variantTag), payload(std::move(payloadExpr)) {}
+  void accept(BoundVisitor &v) override { v.visit(*this); }
+  std::unique_ptr<BoundExpression> clone() const override {
+    return std::make_unique<BoundTaggedUnionLiteral>(
+        std::static_pointer_cast<zir::TaggedUnionType>(type), variantName, tag,
+        payload ? payload->clone() : nullptr);
   }
 };
 
@@ -694,6 +723,7 @@ class BoundRootNode : public BoundNode {
 public:
   std::vector<std::unique_ptr<BoundRecordDeclaration>> records;
   std::vector<std::unique_ptr<BoundEnumDeclaration>> enums;
+  std::vector<std::unique_ptr<BoundTaggedUnionDeclaration>> taggedUnions;
   std::vector<std::unique_ptr<BoundVariableDeclaration>> globals;
   std::vector<std::unique_ptr<BoundFunctionDeclaration>> functions;
   std::vector<std::unique_ptr<BoundExternalFunctionDeclaration>>

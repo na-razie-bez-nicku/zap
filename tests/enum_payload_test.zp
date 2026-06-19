@@ -1,0 +1,22 @@
+enum Value {
+    Empty,
+    Number(Int32),
+    Flag(Bool),
+}
+
+fun main() Int {
+    var a: Value = Value.Empty();
+    var b: Value = Value.Number(41);
+    var c: Value = Value.Flag(true);
+
+    if a.tag != 0 {
+        return 1;
+    }
+    if b.tag != 1 {
+        return 2;
+    }
+    if c.tag != 2 {
+        return 3;
+    }
+    return 0;
+}

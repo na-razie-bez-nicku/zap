@@ -179,6 +179,14 @@ EXTRA_TESTS = [
         "output_pattern": "asm sideeffect \"inb $1, $0\", \"={ax},N{dx}\""
     },
     {
+        "file": "tests/enum_payload_test.zp",
+        "type": "compile",
+        "desc": "Emit LLVM IR for enum payloads",
+        "compile_flags": ["-S", "-emit-llvm"],
+        "output_file": "/tmp/zap-enum-payload.ll",
+        "output_pattern": "Value\" = type { i32, i32 }"
+    },
+    {
         "file": "tests/prelude_implicit_collection_test.zp",
         "type": "compile",
         "desc": "Disabling prelude with -noprelude fails compilation",

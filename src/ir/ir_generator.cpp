@@ -141,6 +141,9 @@ void BoundIRGenerator::visit(sema::BoundRootNode &node) {
   for (const auto &en : node.enums) {
     en->accept(*this);
   }
+  for (const auto &taggedUnion : node.taggedUnions) {
+    taggedUnion->accept(*this);
+  }
   for (const auto &global : node.globals) {
     global->accept(*this);
   }
@@ -895,6 +898,10 @@ void BoundIRGenerator::visit(sema::BoundEnumDeclaration &node) {
   module_->addType(node.type);
 }
 
+void BoundIRGenerator::visit(sema::BoundTaggedUnionDeclaration &node) {
+  module_->addType(node.type);
+}
+
 void BoundIRGenerator::visit(sema::BoundMemberAccess &node) {
   if (node.left->type->getKind() == zir::TypeKind::Enum) {
     node.left->accept(*this);
@@ -909,6 +916,29 @@ void BoundIRGenerator::visit(sema::BoundMemberAccess &node) {
           std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int)));
       return;
     }
+  }
+  if (node.left->type->getKind() == zir::TypeKind::TaggedUnion &&
+      node.member == "tag") {
+    bool oldEvaluateAsAddress = evaluateAsAddress_;
+    evaluateAsAddress_ = true;
+    node.left->accept(*this);
+    evaluateAsAddress_ = oldEvaluateAsAddress;
+
+    auto left = std::move(valueStack_.top());
+    valueStack_.pop();
+    auto fieldAddr = createRegister(std::make_shared<PointerType>(
+        std::make_shared<PrimitiveType>(TypeKind::Int32)));
+    currentBlock_->addInstruction(
+        std::make_unique<GetElementPtrInst>(fieldAddr, left, 0));
+    if (evaluateAsAddress_) {
+      valueStack_.push(fieldAddr);
+    } else {
+      auto result = createRegister(node.type);
+      currentBlock_->addInstruction(
+          std::make_unique<LoadInst>(result, fieldAddr));
+      valueStack_.push(result);
+    }
+    return;
   }
 
   bool oldEvaluateAsAddress = evaluateAsAddress_;
@@ -1087,6 +1117,38 @@ void BoundIRGenerator::visit(sema::BoundStructLiteral &node) {
   }
 
   auto result = createRegister(recordType);
+  currentBlock_->addInstruction(std::make_unique<LoadInst>(result, allocaReg));
+  valueStack_.push(result);
+}
+
+void BoundIRGenerator::visit(sema::BoundTaggedUnionLiteral &node) {
+  auto taggedUnionType = std::static_pointer_cast<TaggedUnionType>(node.type);
+  auto allocaReg =
+      createRegister(std::make_shared<PointerType>(taggedUnionType));
+  currentBlock_->addInstruction(
+      std::make_unique<AllocaInst>(allocaReg, taggedUnionType));
+
+  auto tagType = std::make_shared<PrimitiveType>(TypeKind::Int32);
+  auto tagAddr = createRegister(std::make_shared<PointerType>(tagType));
+  currentBlock_->addInstruction(
+      std::make_unique<GetElementPtrInst>(tagAddr, allocaReg, 0));
+  auto tagValue = std::make_shared<Constant>(std::to_string(node.tag), tagType);
+  currentBlock_->addInstruction(std::make_unique<StoreInst>(
+      tagValue, tagAddr, /*bypassArc=*/true, /*initStore=*/true));
+
+  if (node.payload) {
+    node.payload->accept(*this);
+    auto payload = std::move(valueStack_.top());
+    valueStack_.pop();
+    auto payloadAddr =
+        createRegister(std::make_shared<PointerType>(node.payload->type));
+    currentBlock_->addInstruction(
+        std::make_unique<GetElementPtrInst>(payloadAddr, allocaReg, 1));
+    currentBlock_->addInstruction(std::make_unique<StoreInst>(
+        payload, payloadAddr, /*bypassArc=*/false, /*initStore=*/true));
+  }
+
+  auto result = createRegister(taggedUnionType);
   currentBlock_->addInstruction(std::make_unique<LoadInst>(result, allocaReg));
   valueStack_.push(result);
 }

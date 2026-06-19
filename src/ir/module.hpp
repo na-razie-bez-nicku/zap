@@ -90,6 +90,19 @@ public:
                  (i < variants.size() - 1 ? ", " : "");
         }
         res += " }\n";
+      } else if (type->getKind() == TypeKind::TaggedUnion) {
+        auto tu = std::static_pointer_cast<TaggedUnionType>(type);
+        res += tu->toString() + " { ";
+        const auto &variants = tu->getVariants();
+        for (size_t i = 0; i < variants.size(); ++i) {
+          res += variants[i].name;
+          if (variants[i].payloadType) {
+            res += "(" + variants[i].payloadType->toString() + ")";
+          }
+          res += " = " + std::to_string(variants[i].tag) +
+                 (i < variants.size() - 1 ? ", " : "");
+        }
+        res += " }\n";
       }
     }
     res += "\n";

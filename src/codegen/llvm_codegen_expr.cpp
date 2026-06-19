@@ -919,6 +919,21 @@ void LLVMCodeGen::visit(sema::BoundMemberAccess &node) {
     evaluateAsAddr_ = old;
   }
 
+  if (node.left->type->getKind() == zir::TypeKind::TaggedUnion &&
+      node.member == "tag") {
+    auto taggedUnionType =
+        std::static_pointer_cast<zir::TaggedUnionType>(node.left->type);
+    auto *structTy = llvm::cast<llvm::StructType>(toLLVMType(*taggedUnionType));
+    auto *fieldAddr = builder_.CreateStructGEP(structTy, leftAddr, 0, "tag");
+    if (evaluateAsAddr_) {
+      lastValue_ = fieldAddr;
+    } else {
+      lastValue_ =
+          builder_.CreateLoad(toLLVMType(*node.type), fieldAddr, node.member);
+    }
+    return;
+  }
+
   auto recordType = std::static_pointer_cast<zir::RecordType>(node.left->type);
   int fieldIndex = -1;
   const auto &fields = recordType->getFields();
@@ -978,6 +993,30 @@ void LLVMCodeGen::visit(sema::BoundStructLiteral &node) {
     lastValue_ = structAddr;
   } else {
     lastValue_ = builder_.CreateLoad(structTy, structAddr);
+  }
+}
+
+void LLVMCodeGen::visit(sema::BoundTaggedUnionLiteral &node) {
+  auto taggedUnionType =
+      std::static_pointer_cast<zir::TaggedUnionType>(node.type);
+  auto *structTy = llvm::cast<llvm::StructType>(toLLVMType(*taggedUnionType));
+  auto *addr = createEntryAlloca(currentFn_, "tagged_union_literal", structTy);
+
+  auto *tagAddr = builder_.CreateStructGEP(structTy, addr, 0, "tag.addr");
+  builder_.CreateStore(
+      llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx_), node.tag), tagAddr);
+
+  if (node.payload) {
+    node.payload->accept(*this);
+    auto *payloadAddr =
+        builder_.CreateStructGEP(structTy, addr, 1, "payload.addr");
+    builder_.CreateStore(lastValue_, payloadAddr);
+  }
+
+  if (evaluateAsAddr_) {
+    lastValue_ = addr;
+  } else {
+    lastValue_ = builder_.CreateLoad(structTy, addr, "tagged_union");
   }
 }
 

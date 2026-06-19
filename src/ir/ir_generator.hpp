@@ -34,8 +34,10 @@ public:
   void visit(sema::BoundIndexAccess &node) override;
   void visit(sema::BoundRecordDeclaration &node) override;
   void visit(sema::BoundEnumDeclaration &node) override;
+  void visit(sema::BoundTaggedUnionDeclaration &node) override;
   void visit(sema::BoundMemberAccess &node) override;
   void visit(sema::BoundStructLiteral &node) override;
+  void visit(sema::BoundTaggedUnionLiteral &node) override;
   void visit(sema::BoundModuleReference &node) override;
   void visit(sema::BoundIfStatement &node) override;
   void visit(sema::BoundWhileStatement &node) override;

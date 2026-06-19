@@ -18,6 +18,8 @@ namespace sema {
 void Binder::predeclareModuleTypes(ModuleState &module) {
   currentModuleId_ = module.info->moduleId;
   currentScope_ = module.scope;
+  std::vector<std::pair<EnumDecl *, std::shared_ptr<TypeSymbol>>>
+      pendingPayloadEnums;
 
   for (const auto &child : module.info->root->children) {
     if (auto recordDecl = dynamic_cast<RecordDecl *>(child.get())) {
@@ -129,6 +131,41 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
         module.symbol->exports[structDecl->name_] = symbol;
       }
     } else if (auto enumDecl = dynamic_cast<EnumDecl *>(child.get())) {
+      bool hasPayloadVariants =
+          std::any_of(enumDecl->entries_.begin(), enumDecl->entries_.end(),
+                      [](const EnumDecl::Entry &entry) {
+                        return entry.payloadType_ != nullptr;
+                      });
+      if (hasPayloadVariants) {
+        auto type = std::make_shared<zir::TaggedUnionType>(
+            displayTypeName(module.info->moduleName, enumDecl->name_),
+            std::vector<zir::TaggedUnionType::Variant>{},
+            mangleName(module.info->linkPath.empty() ? module.info->moduleId
+                                                     : module.info->linkPath,
+                       enumDecl->name_));
+        auto symbol = std::make_shared<TypeSymbol>(
+            enumDecl->name_, type,
+            mangleName(module.info->linkPath.empty() ? module.info->moduleId
+                                                     : module.info->linkPath,
+                       enumDecl->name_),
+            module.info->moduleName, enumDecl->visibility_, false);
+        validateAndApplyTypeAttributes(*enumDecl, symbol, true);
+        if (symbol->hasReprC) {
+          error(enumDecl->span,
+                "attribute 'repr' cannot be applied to enum payloads");
+        }
+        if (!module.scope->declare(enumDecl->name_, symbol)) {
+          error(enumDecl->span,
+                "Type '" + enumDecl->name_ + "' already declared.");
+        }
+        module.symbol->members[enumDecl->name_] = symbol;
+        if (enumDecl->visibility_ == Visibility::Public) {
+          module.symbol->exports[enumDecl->name_] = symbol;
+        }
+        pendingPayloadEnums.push_back({enumDecl, symbol});
+        continue;
+      }
+
       std::vector<zir::EnumType::Variant> variants;
       variants.reserve(enumDecl->entries_.size());
 
@@ -188,6 +225,36 @@ void Binder::predeclareModuleTypes(ModuleState &module) {
         module.symbol->exports[enumDecl->name_] = symbol;
       }
     }
+  }
+
+  for (auto &[decl, symbol] : pendingPayloadEnums) {
+    std::vector<zir::TaggedUnionType::Variant> variants;
+    variants.reserve(decl->entries_.size());
+    std::unordered_set<std::string> seenVariants;
+    for (size_t i = 0; i < decl->entries_.size(); ++i) {
+      const auto &entry = decl->entries_[i];
+      if (!seenVariants.insert(entry.name_).second) {
+        error(decl->span, "Duplicate enum variant '" + entry.name_ + "' in '" +
+                              decl->name_ + "'.");
+        continue;
+      }
+      if (entry.hasExplicitValue_) {
+        error(decl->span,
+              "Enum variants with payloads cannot use explicit values.");
+      }
+      std::shared_ptr<zir::Type> payloadType = nullptr;
+      if (entry.payloadType_) {
+        payloadType = mapType(*entry.payloadType_);
+        if (!payloadType) {
+          error(entry.payloadType_->span,
+                "Unknown type: " + entry.payloadType_->qualifiedName());
+          continue;
+        }
+      }
+      variants.push_back({entry.name_, payloadType, static_cast<int64_t>(i)});
+    }
+    std::static_pointer_cast<zir::TaggedUnionType>(symbol->type)
+        ->setVariants(std::move(variants));
   }
 }
 
@@ -1248,8 +1315,16 @@ void Binder::visit(StructDeclarationNode &node) {
 void Binder::visit(EnumDecl &node) {
   auto symbol =
       std::dynamic_pointer_cast<TypeSymbol>(currentScope_->lookup(node.name_));
-  auto enumType = std::static_pointer_cast<zir::EnumType>(symbol->type);
+  if (symbol->type->getKind() == zir::TypeKind::TaggedUnion) {
+    auto taggedUnionType =
+        std::static_pointer_cast<zir::TaggedUnionType>(symbol->type);
+    auto boundTaggedUnion = std::make_unique<BoundTaggedUnionDeclaration>();
+    boundTaggedUnion->type = taggedUnionType;
+    boundRoot_->taggedUnions.push_back(std::move(boundTaggedUnion));
+    return;
+  }
 
+  auto enumType = std::static_pointer_cast<zir::EnumType>(symbol->type);
   auto boundEnum = std::make_unique<BoundEnumDeclaration>();
   boundEnum->type = enumType;
   boundRoot_->enums.push_back(std::move(boundEnum));

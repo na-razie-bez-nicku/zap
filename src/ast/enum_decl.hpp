@@ -1,6 +1,7 @@
 #pragma once
 #include "node.hpp"
 #include "top_level.hpp"
+#include "type_node.hpp"
 #include "visitor.hpp"
 #include <cstdint>
 #include <memory>
@@ -14,6 +15,7 @@ public:
     std::string name_;
     bool hasExplicitValue_ = false;
     int64_t value_ = 0;
+    std::unique_ptr<TypeNode> payloadType_;
 
     Entry() = default;
 
@@ -22,6 +24,9 @@ public:
 
     Entry(std::string name, int64_t value)
         : name_(std::move(name)), hasExplicitValue_(true), value_(value) {}
+
+    Entry(std::string name, std::unique_ptr<TypeNode> payloadType)
+        : name_(std::move(name)), payloadType_(std::move(payloadType)) {}
   };
 
   std::string name_;

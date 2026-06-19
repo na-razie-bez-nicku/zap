@@ -1,0 +1,8 @@
+enum Value {
+    Number(Int32),
+}
+
+fun main() Int {
+    var value: Value = Value.Number("bad");
+    return value.tag;
+}

@@ -1865,7 +1865,12 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
   while (peek().type != TokenType::RBRACE) {
     Token entryToken = eat(TokenType::ID);
 
-    if (peek().type == TokenType::ASSIGN) {
+    if (peek().type == TokenType::LPAREN) {
+      eat(TokenType::LPAREN);
+      auto payloadType = parseType();
+      eat(TokenType::RPAREN);
+      entries.emplace_back(entryToken.value, std::move(payloadType));
+    } else if (peek().type == TokenType::ASSIGN) {
       Token assignToken = eat(TokenType::ASSIGN);
 
       bool isNegative = false;

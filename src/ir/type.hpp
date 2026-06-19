@@ -29,6 +29,7 @@ enum class TypeKind {
   Class,
   Array,
   Enum,
+  TaggedUnion,
   FunctionPointer
 };
 
@@ -259,6 +260,44 @@ public:
       }
     }
     return -1;
+  }
+};
+
+class TaggedUnionType : public Type {
+public:
+  struct Variant {
+    std::string name;
+    std::shared_ptr<Type> payloadType;
+    int64_t tag = 0;
+  };
+
+private:
+  std::string name;
+  std::string codegenName;
+  std::vector<Variant> variants;
+
+public:
+  TaggedUnionType(std::string n, std::vector<Variant> v,
+                  std::string codegen = "")
+      : name(std::move(n)),
+        codegenName(codegen.empty() ? name : std::move(codegen)),
+        variants(std::move(v)) {}
+
+  TypeKind getKind() const override { return TypeKind::TaggedUnion; }
+  std::string toString() const override { return "enum " + name; }
+  bool isReferenceType() const override { return true; }
+
+  const std::string &getName() const { return name; }
+  const std::string &getCodegenName() const { return codegenName; }
+  const std::vector<Variant> &getVariants() const { return variants; }
+  void setVariants(std::vector<Variant> v) { variants = std::move(v); }
+
+  const Variant *findVariant(const std::string &variantName) const {
+    for (const auto &variant : variants) {
+      if (variant.name == variantName)
+        return &variant;
+    }
+    return nullptr;
   }
 };
 

@@ -409,6 +409,38 @@ llvm::Type *LLVMCodeGen::toLLVMType(const zir::Type &ty) {
     if (static_cast<const zir::EnumType &>(ty).hasReprC)
       return llvm::Type::getInt32Ty(ctx_);
     return llvm::Type::getInt64Ty(ctx_);
+  case zir::TypeKind::TaggedUnion: {
+    const auto &tu = static_cast<const zir::TaggedUnionType &>(ty);
+    auto it = structCache_.find(tu.getCodegenName());
+    if (it != structCache_.end())
+      return it->second;
+
+    auto *structTy = llvm::StructType::create(ctx_, tu.getCodegenName());
+    structCache_[tu.getCodegenName()] = structTy;
+
+    llvm::Type *payloadStorageTy = llvm::Type::getInt8Ty(ctx_);
+    uint64_t payloadStorageSize = 0;
+    uint64_t payloadStorageAlign = 0;
+    for (const auto &variant : tu.getVariants()) {
+      if (!variant.payloadType)
+        continue;
+      auto *candidateTy = toLLVMType(*variant.payloadType);
+      auto candidateSize =
+          module_->getDataLayout().getTypeAllocSize(candidateTy);
+      auto candidateAlign =
+          module_->getDataLayout().getABITypeAlign(candidateTy).value();
+      if (candidateSize > payloadStorageSize ||
+          (candidateSize == payloadStorageSize &&
+           candidateAlign > payloadStorageAlign)) {
+        payloadStorageTy = candidateTy;
+        payloadStorageSize = candidateSize;
+        payloadStorageAlign = candidateAlign;
+      }
+    }
+
+    structTy->setBody({llvm::Type::getInt32Ty(ctx_), payloadStorageTy});
+    return structTy;
+  }
   case zir::TypeKind::Record: {
     const auto &rt = static_cast<const zir::RecordType &>(ty);
     auto it = structCache_.find(rt.getCodegenName());
@@ -700,6 +732,8 @@ void LLVMCodeGen::visit(sema::BoundRootNode &node) {
     rec->accept(*this);
   for (const auto &en : node.enums)
     en->accept(*this);
+  for (const auto &taggedUnion : node.taggedUnions)
+    taggedUnion->accept(*this);
 }
 
 void LLVMCodeGen::visit(sema::BoundFunctionDeclaration &node) {
@@ -1045,6 +1079,11 @@ void LLVMCodeGen::visit(sema::BoundEnumDeclaration &node) {
   // unless we want to generate debug info or constant values.
   (void)node;
 }
+
+void LLVMCodeGen::visit(sema::BoundTaggedUnionDeclaration &node) {
+  toLLVMType(*node.type);
+}
+
 void LLVMCodeGen::visit(sema::BoundFailStatement &node) {
   (void)node;
   throw std::runtime_error(

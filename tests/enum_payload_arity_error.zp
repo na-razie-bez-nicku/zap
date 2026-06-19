@@ -1,0 +1,10 @@
+enum Value {
+    Empty,
+    Number(Int32),
+}
+
+fun main() Int {
+    var a: Value = Value.Empty(1);
+    var b: Value = Value.Number();
+    return a.tag + b.tag;
+}

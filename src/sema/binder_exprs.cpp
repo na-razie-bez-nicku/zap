@@ -749,6 +749,21 @@ void Binder::visit(MemberAccessNode &node) {
           std::make_unique<BoundLiteral>(std::to_string(value), enumType));
       return;
     }
+  } else if (left->type->getKind() == zir::TypeKind::TaggedUnion) {
+    auto taggedUnionType =
+        std::static_pointer_cast<zir::TaggedUnionType>(left->type);
+    if (node.member_ == "tag") {
+      expressionStack_.push(std::make_unique<BoundMemberAccess>(
+          std::move(left), node.member_,
+          std::make_shared<zir::PrimitiveType>(zir::TypeKind::Int32)));
+      return;
+    }
+    if (taggedUnionType->findVariant(node.member_) &&
+        dynamic_cast<BoundLiteral *>(left.get())) {
+      expressionStack_.push(std::make_unique<BoundMemberAccess>(
+          std::move(left), node.member_, taggedUnionType));
+      return;
+    }
   } else if (left->type->getKind() == zir::TypeKind::Record) {
     auto recordType = std::static_pointer_cast<zir::RecordType>(left->type);
     for (const auto &field : recordType->getFields()) {
@@ -840,6 +855,57 @@ void Binder::visit(FunCall &node) {
     }
     auto selfExpr = std::move(expressionStack_.top());
     expressionStack_.pop();
+    if (selfExpr->type->getKind() == zir::TypeKind::TaggedUnion &&
+        dynamic_cast<BoundLiteral *>(selfExpr.get())) {
+      auto taggedUnionType =
+          std::static_pointer_cast<zir::TaggedUnionType>(selfExpr->type);
+      auto variant = taggedUnionType->findVariant(member->member_);
+      if (!variant) {
+        error(node.span, "Enum '" + taggedUnionType->getName() +
+                             "' has no variant '" + member->member_ + "'.");
+        return;
+      }
+
+      if (variant->payloadType) {
+        if (node.params_.size() != 1) {
+          error(node.span, "Enum variant '" + member->member_ +
+                               "' expects one payload argument.");
+          return;
+        }
+        if (!node.params_[0]->name.empty() || node.params_[0]->isRef ||
+            node.params_[0]->isSpread) {
+          error(node.params_[0]->value->span,
+                "Enum payload arguments must be positional values.");
+          return;
+        }
+        auto payload = bindExpressionWithExpected(node.params_[0]->value.get(),
+                                                  variant->payloadType);
+        if (!payload) {
+          return;
+        }
+        if (!canConvert(payload->type, variant->payloadType)) {
+          error(node.params_[0]->value->span,
+                "Cannot convert enum payload from '" +
+                    renderTypeForUser(payload->type) + "' to '" +
+                    renderTypeForUser(variant->payloadType) + "'");
+          return;
+        }
+        payload = wrapInCast(std::move(payload), variant->payloadType);
+        expressionStack_.push(std::make_unique<BoundTaggedUnionLiteral>(
+            taggedUnionType, variant->name, variant->tag, std::move(payload)));
+        return;
+      }
+
+      if (!node.params_.empty()) {
+        error(node.span, "Enum variant '" + member->member_ +
+                             "' does not take a payload argument.");
+        return;
+      }
+      expressionStack_.push(std::make_unique<BoundTaggedUnionLiteral>(
+          taggedUnionType, variant->name, variant->tag, nullptr));
+      return;
+    }
+
     if (selfExpr->type->getKind() != zir::TypeKind::Class) {
       // Not a class method call. Fall through to the normal qualified
       // function/module call resolution path below.

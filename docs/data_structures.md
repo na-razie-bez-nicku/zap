@@ -136,6 +136,38 @@ enum Size {
 
 ---
 
+## Enum Payloads
+
+Enums can define a closed set of variants where each variant can optionally
+carry one payload value.
+
+```/dev/null/examples.zp#L1-15
+enum Value {
+    Empty,
+    Number(Int32),
+    Flag(Bool),
+}
+
+fun read_tag(v: Value) Int32 {
+    return v.tag;
+}
+
+fun main() Int {
+    var value: Value = Value.Number(42);
+    return value.tag;
+}
+```
+
+### Notes
+
+- Variants are constructed with call syntax (`Value.Number(42)`,
+  `Value.Empty()`)
+- `.tag` exposes the numeric discriminant as `Int32`
+- Pattern matching and payload narrowing are not part of this first
+  implementation
+
+---
+
 ## Choosing Between Them
 
 - Use **arrays** when:
@@ -146,7 +178,7 @@ enum Size {
   - you need a custom type with named fields
 
 - Use **enum** when:
-  - value must be one of a known finite set
+  - value must be one of a known finite set and some variants carry data
 
 ---
 
