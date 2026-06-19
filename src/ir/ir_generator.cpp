@@ -40,15 +40,37 @@ std::string renderTypeForUser(const std::shared_ptr<Type> &type) {
 
 std::shared_ptr<Value> BoundIRGenerator::lowerConstantExpression(
     const sema::BoundExpression &expression) {
+  std::set<const sema::VariableSymbol *> resolvingConstants;
+  return lowerConstantExpression(expression, resolvingConstants);
+}
+
+std::shared_ptr<Value> BoundIRGenerator::lowerConstantExpression(
+    const sema::BoundExpression &expression,
+    std::set<const sema::VariableSymbol *> &resolvingConstants) {
   if (auto literal = dynamic_cast<const sema::BoundLiteral *>(&expression)) {
     return std::make_shared<Constant>(literal->value, literal->type);
+  }
+
+  if (auto variable =
+          dynamic_cast<const sema::BoundVariableExpression *>(&expression)) {
+    auto symbol = variable->symbol;
+    if (symbol && symbol->is_const && symbol->constant_value) {
+      if (!resolvingConstants.insert(symbol.get()).second) {
+        return nullptr;
+      }
+      auto value =
+          lowerConstantExpression(*symbol->constant_value, resolvingConstants);
+      resolvingConstants.erase(symbol.get());
+      return value;
+    }
+    return nullptr;
   }
 
   if (auto array = dynamic_cast<const sema::BoundArrayLiteral *>(&expression)) {
     std::vector<std::shared_ptr<Value>> elements;
     elements.reserve(array->elements.size());
     for (const auto &element : array->elements) {
-      auto value = lowerConstantExpression(*element);
+      auto value = lowerConstantExpression(*element, resolvingConstants);
       if (!value) {
         return nullptr;
       }
@@ -58,7 +80,7 @@ std::shared_ptr<Value> BoundIRGenerator::lowerConstantExpression(
   }
 
   if (auto cast = dynamic_cast<const sema::BoundCast *>(&expression)) {
-    auto value = lowerConstantExpression(*cast->expression);
+    auto value = lowerConstantExpression(*cast->expression, resolvingConstants);
     if (auto constant = std::dynamic_pointer_cast<Constant>(value)) {
       return std::make_shared<Constant>(constant->getLiteral(), cast->type);
     }

@@ -3,6 +3,7 @@
 #include "module.hpp"
 #include <map>
 #include <memory>
+#include <set>
 #include <stack>
 #include <string>
 #include <vector>
@@ -76,6 +77,9 @@ private:
   std::string createBlockLabel(const std::string &prefix);
   std::shared_ptr<Value>
   lowerConstantExpression(const sema::BoundExpression &expression);
+  std::shared_ptr<Value> lowerConstantExpression(
+      const sema::BoundExpression &expression,
+      std::set<const sema::VariableSymbol *> &resolvingConstants);
 
   bool isFailableType(const std::shared_ptr<Type> &type) const;
   std::shared_ptr<Type>
