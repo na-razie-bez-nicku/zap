@@ -1,0 +1,21 @@
+import "test2.zp";
+
+class Example {
+  pub fun test() Int {
+    const example: test2.ExampleStruct = test2.ExampleStruct{
+      name: "Adam",
+      age: 32,
+    };
+
+    if example.name != "Adam" {
+      return 1;
+    }
+
+    return example.age - 32;
+  }
+}
+
+fun main() Int {
+  var example = new Example();
+  return example.test();
+}

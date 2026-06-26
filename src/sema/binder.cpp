@@ -515,9 +515,21 @@ std::unique_ptr<BoundRootNode> Binder::bind(std::vector<ModuleInfo *> modules) {
     currentScope_ = module.scope;
     for (const auto &child : module.info->root->children) {
       if (dynamic_cast<RecordDecl *>(child.get()) ||
-          dynamic_cast<ClassDecl *>(child.get()) ||
           dynamic_cast<StructDeclarationNode *>(child.get()) ||
           dynamic_cast<EnumDecl *>(child.get())) {
+        child->accept(*this);
+      }
+    }
+  }
+  if (hadError_ || _diag.hadErrors()) {
+    return nullptr;
+  }
+
+  for (auto &[_, module] : modules_) {
+    currentModuleId_ = module.info->moduleId;
+    currentScope_ = module.scope;
+    for (const auto &child : module.info->root->children) {
+      if (dynamic_cast<ClassDecl *>(child.get())) {
         child->accept(*this);
       }
     }
