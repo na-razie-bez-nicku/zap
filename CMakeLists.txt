@@ -15,6 +15,7 @@ set(SOURCES
     src/lexer/lexer.cpp
     src/parser/parser.cpp
     src/frontend/module_loader.cpp
+    src/ir/failable_type.cpp
     src/ir/ir_generator.cpp
     src/sema/binder.cpp
     src/sema/binder_decls.cpp

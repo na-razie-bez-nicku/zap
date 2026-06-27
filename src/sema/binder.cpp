@@ -2,6 +2,7 @@
 #include "../ast/class_decl.hpp"
 #include "../ast/const/const_char.hpp"
 #include "../ast/record_decl.hpp"
+#include "../ir/failable_type.hpp"
 #include "../utils/string_type_utils.hpp"
 #include <algorithm>
 #include <cctype>
@@ -99,52 +100,25 @@ bool isStringType(const std::shared_ptr<zir::Type> &type) {
 }
 
 bool isFailableType(const std::shared_ptr<zir::Type> &type) {
-  if (!type || type->getKind() != zir::TypeKind::Record) {
-    return false;
-  }
-
-  auto record = std::static_pointer_cast<zir::RecordType>(type);
-  const auto &name = record->getName();
-  if (name.rfind(kFailablePrefix, 0) != 0) {
-    return false;
-  }
-
-  const auto &fields = record->getFields();
-  return fields.size() == 3 && fields[0].name == "ok" &&
-         fields[1].name == "value" && fields[2].name == "error";
+  return zir::getFailableTypeLayout(type).has_value();
 }
 
 std::shared_ptr<zir::Type>
 failableValueType(const std::shared_ptr<zir::Type> &type) {
-  if (!isFailableType(type)) {
-    return nullptr;
-  }
-  auto record = std::static_pointer_cast<zir::RecordType>(type);
-  return record->getFields()[1].type;
+  auto layout = zir::getFailableTypeLayout(type);
+  return layout ? layout->valueType : nullptr;
 }
 
 std::shared_ptr<zir::Type>
 failableErrorType(const std::shared_ptr<zir::Type> &type) {
-  if (!isFailableType(type)) {
-    return nullptr;
-  }
-  auto record = std::static_pointer_cast<zir::RecordType>(type);
-  return record->getFields()[2].type;
+  auto layout = zir::getFailableTypeLayout(type);
+  return layout ? layout->errorType : nullptr;
 }
 
 std::shared_ptr<zir::RecordType>
 makeFailableType(const std::shared_ptr<zir::Type> &valueType,
                  const std::shared_ptr<zir::Type> &errorType) {
-  auto suffix = sanitizeTypeName((valueType ? valueType->toString() : "<?>") +
-                                 std::string("$") +
-                                 (errorType ? errorType->toString() : "<?>"));
-  auto typeName = std::string(kFailablePrefix) + suffix;
-  auto type = std::make_shared<zir::RecordType>(typeName, typeName);
-  type->addField("ok",
-                 std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool));
-  type->addField("value", valueType);
-  type->addField("error", errorType);
-  return type;
+  return zir::makeFailableRecordType(valueType, errorType);
 }
 
 std::string sanitizeTypeName(const std::string &value) {
@@ -227,10 +201,10 @@ makeDefaultValueExpr(const std::shared_ptr<zir::Type> &type) {
     return std::make_unique<BoundLiteral>(
         "0", std::make_shared<zir::PrimitiveType>(zir::TypeKind::NullPtr));
   case zir::TypeKind::Record:
-    if (isFailableType(type)) {
+    if (sema::isFailableType(type)) {
       auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
-      auto valueType = failableValueType(type);
-      auto errorType = failableErrorType(type);
+      auto valueType = sema::failableValueType(type);
+      auto errorType = sema::failableErrorType(type);
       std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>>
           fields;
       fields.push_back({"ok", std::make_unique<BoundLiteral>("false", okType)});
@@ -251,8 +225,8 @@ std::unique_ptr<BoundExpression>
 makeFailableValueExpr(std::unique_ptr<BoundExpression> valueExpr,
                       const std::shared_ptr<zir::Type> &failableType) {
   auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
-  auto valueType = failableValueType(failableType);
-  auto errorType = failableErrorType(failableType);
+  auto valueType = sema::failableValueType(failableType);
+  auto errorType = sema::failableErrorType(failableType);
 
   std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>> fields;
   fields.push_back({"ok", std::make_unique<BoundLiteral>("true", okType)});
@@ -265,7 +239,7 @@ std::unique_ptr<BoundExpression>
 makeFailableErrorExpr(std::unique_ptr<BoundExpression> errorExpr,
                       const std::shared_ptr<zir::Type> &failableType) {
   auto okType = std::make_shared<zir::PrimitiveType>(zir::TypeKind::Bool);
-  auto valueType = failableValueType(failableType);
+  auto valueType = sema::failableValueType(failableType);
 
   std::vector<std::pair<std::string, std::unique_ptr<BoundExpression>>> fields;
   fields.push_back({"ok", std::make_unique<BoundLiteral>("false", okType)});

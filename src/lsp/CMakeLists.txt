@@ -10,6 +10,7 @@ set(LSP_SOURCES
   "${CMAKE_SOURCE_DIR}/src/lexer/lexer.cpp"
   "${CMAKE_SOURCE_DIR}/src/parser/parser.cpp"
   "${CMAKE_SOURCE_DIR}/src/frontend/module_loader.cpp"
+  "${CMAKE_SOURCE_DIR}/src/ir/failable_type.cpp"
   "${CMAKE_SOURCE_DIR}/src/sema/binder.cpp"
   "${CMAKE_SOURCE_DIR}/src/sema/binder_decls.cpp"
   "${CMAKE_SOURCE_DIR}/src/sema/binder_stmts.cpp"

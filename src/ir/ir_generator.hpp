@@ -81,11 +81,6 @@ private:
       const sema::BoundExpression &expression,
       std::set<const sema::VariableSymbol *> &resolvingConstants);
 
-  bool isFailableType(const std::shared_ptr<Type> &type) const;
-  std::shared_ptr<Type>
-  failableValueType(const std::shared_ptr<Type> &type) const;
-  std::shared_ptr<Type>
-  failableErrorType(const std::shared_ptr<Type> &type) const;
   std::shared_ptr<Value>
   emitFailableFieldLoad(const std::shared_ptr<Value> &value, int fieldIndex,
                         const std::shared_ptr<Type> &fieldType);

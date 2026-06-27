@@ -1,5 +1,6 @@
 #include "ir_generator.hpp"
 #include "../utils/string_type_utils.hpp"
+#include "failable_type.hpp"
 #include <cstdint>
 #include <iostream>
 
@@ -90,35 +91,6 @@ std::shared_ptr<Value> BoundIRGenerator::lowerConstantExpression(
   return nullptr;
 }
 
-bool BoundIRGenerator::isFailableType(const std::shared_ptr<Type> &type) const {
-  if (!type || type->getKind() != TypeKind::Record) {
-    return false;
-  }
-
-  auto record = std::static_pointer_cast<RecordType>(type);
-  const auto &fields = record->getFields();
-  return fields.size() == 3 && fields[0].name == "ok" &&
-         fields[1].name == "value" && fields[2].name == "error";
-}
-
-std::shared_ptr<Type>
-BoundIRGenerator::failableValueType(const std::shared_ptr<Type> &type) const {
-  if (!isFailableType(type)) {
-    return nullptr;
-  }
-  auto record = std::static_pointer_cast<RecordType>(type);
-  return record->getFields()[1].type;
-}
-
-std::shared_ptr<Type>
-BoundIRGenerator::failableErrorType(const std::shared_ptr<Type> &type) const {
-  if (!isFailableType(type)) {
-    return nullptr;
-  }
-  auto record = std::static_pointer_cast<RecordType>(type);
-  return record->getFields()[2].type;
-}
-
 std::shared_ptr<Value> BoundIRGenerator::emitFailableFieldLoad(
     const std::shared_ptr<Value> &value, int fieldIndex,
     const std::shared_ptr<Type> &fieldType) {
@@ -135,18 +107,22 @@ std::shared_ptr<Value> BoundIRGenerator::emitFailableFieldLoad(
 
 std::shared_ptr<Value>
 BoundIRGenerator::emitFailableOk(const std::shared_ptr<Value> &value) {
-  return emitFailableFieldLoad(value, 0,
+  return emitFailableFieldLoad(value, FailableTypeLayout::OkField,
                                std::make_shared<PrimitiveType>(TypeKind::Bool));
 }
 
 std::shared_ptr<Value>
 BoundIRGenerator::emitFailableValue(const std::shared_ptr<Value> &value) {
-  return emitFailableFieldLoad(value, 1, failableValueType(value->getType()));
+  auto layout = getFailableTypeLayout(value->getType());
+  return emitFailableFieldLoad(value, FailableTypeLayout::ValueField,
+                               layout ? layout->valueType : nullptr);
 }
 
 std::shared_ptr<Value>
 BoundIRGenerator::emitFailableError(const std::shared_ptr<Value> &value) {
-  return emitFailableFieldLoad(value, 2, failableErrorType(value->getType()));
+  auto layout = getFailableTypeLayout(value->getType());
+  return emitFailableFieldLoad(value, FailableTypeLayout::ErrorField,
+                               layout ? layout->errorType : nullptr);
 }
 
 std::unique_ptr<Module> BoundIRGenerator::generate(sema::BoundRootNode &root) {
@@ -377,8 +353,9 @@ void BoundIRGenerator::visit(sema::BoundFailStatement &node) {
   }
 
   auto failableType = node.propagatedType;
-  auto valueType = failableValueType(failableType);
-  auto errorType = failableErrorType(failableType);
+  auto failableLayout = getFailableTypeLayout(failableType);
+  auto valueType = failableLayout ? failableLayout->valueType : nullptr;
+  auto errorType = failableLayout ? failableLayout->errorType : nullptr;
 
   auto allocaReg = createRegister(std::make_shared<PointerType>(failableType));
   currentBlock_->addInstruction(
@@ -386,16 +363,16 @@ void BoundIRGenerator::visit(sema::BoundFailStatement &node) {
 
   auto okAddr = createRegister(std::make_shared<PointerType>(
       std::make_shared<PrimitiveType>(TypeKind::Bool)));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(okAddr, allocaReg, 0));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      okAddr, allocaReg, FailableTypeLayout::OkField));
   currentBlock_->addInstruction(std::make_unique<StoreInst>(
       std::make_shared<Constant>(
           "false", std::make_shared<PrimitiveType>(TypeKind::Bool)),
       okAddr));
 
   auto valueAddr = createRegister(std::make_shared<PointerType>(valueType));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(valueAddr, allocaReg, 1));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      valueAddr, allocaReg, FailableTypeLayout::ValueField));
   if (valueType && valueType->getKind() != TypeKind::Void) {
     // The value field is unused on the error path; zero it without ARC.
     currentBlock_->addInstruction(std::make_unique<StoreInst>(
@@ -404,8 +381,8 @@ void BoundIRGenerator::visit(sema::BoundFailStatement &node) {
   }
 
   auto errAddr = createRegister(std::make_shared<PointerType>(errorType));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(errAddr, allocaReg, 2));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      errAddr, allocaReg, FailableTypeLayout::ErrorField));
   if (errValue) {
     currentBlock_->addInstruction(
         std::make_unique<StoreInst>(errValue, errAddr));
@@ -1210,8 +1187,11 @@ void BoundIRGenerator::visit(sema::BoundTryExpression &node) {
   auto failErr = emitFailableError(failableValue);
 
   auto propagatedType = node.propagatedType;
-  auto propagatedValueType = failableValueType(propagatedType);
-  auto propagatedErrorType = failableErrorType(propagatedType);
+  auto propagatedLayout = getFailableTypeLayout(propagatedType);
+  auto propagatedValueType =
+      propagatedLayout ? propagatedLayout->valueType : nullptr;
+  auto propagatedErrorType =
+      propagatedLayout ? propagatedLayout->errorType : nullptr;
 
   auto propagatedAlloca =
       createRegister(std::make_shared<PointerType>(propagatedType));
@@ -1220,8 +1200,8 @@ void BoundIRGenerator::visit(sema::BoundTryExpression &node) {
 
   auto okAddr = createRegister(std::make_shared<PointerType>(
       std::make_shared<PrimitiveType>(TypeKind::Bool)));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(okAddr, propagatedAlloca, 0));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      okAddr, propagatedAlloca, FailableTypeLayout::OkField));
   currentBlock_->addInstruction(std::make_unique<StoreInst>(
       std::make_shared<Constant>(
           "false", std::make_shared<PrimitiveType>(TypeKind::Bool)),
@@ -1229,8 +1209,8 @@ void BoundIRGenerator::visit(sema::BoundTryExpression &node) {
 
   auto valueAddr =
       createRegister(std::make_shared<PointerType>(propagatedValueType));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(valueAddr, propagatedAlloca, 1));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      valueAddr, propagatedAlloca, FailableTypeLayout::ValueField));
   if (propagatedValueType && propagatedValueType->getKind() != TypeKind::Void) {
     currentBlock_->addInstruction(std::make_unique<StoreInst>(
         std::make_shared<Constant>("0", propagatedValueType), valueAddr));
@@ -1238,8 +1218,8 @@ void BoundIRGenerator::visit(sema::BoundTryExpression &node) {
 
   auto errAddr =
       createRegister(std::make_shared<PointerType>(propagatedErrorType));
-  currentBlock_->addInstruction(
-      std::make_unique<GetElementPtrInst>(errAddr, propagatedAlloca, 2));
+  currentBlock_->addInstruction(std::make_unique<GetElementPtrInst>(
+      errAddr, propagatedAlloca, FailableTypeLayout::ErrorField));
   currentBlock_->addInstruction(std::make_unique<StoreInst>(failErr, errAddr));
 
   auto propagatedValue = createRegister(propagatedType);
